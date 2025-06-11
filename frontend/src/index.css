@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600&family=Inter:wght@400;500&display=swap');
+
+/* Tailwind base setup */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Define fuentes */
+@layer base {
+  html {
+    font-family: 'Inter', sans-serif; /* Fuente base global */
+  }
+
+  h1, h2, h3 {
+    @apply font-heading; /* Aplica 'Cinzel' solo a encabezados */
+  }
+}
+
+/* Define utilidades personalizadas */
+@layer utilities {
+  .font-heading {
+    font-family: 'Inter', serif;
+    font-weight: 600;
+  }
+
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Estilos globales */
+body {
+  @apply text-white;
+  background-color: #000000;
+}
+
