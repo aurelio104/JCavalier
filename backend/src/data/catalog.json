@@ -1,0 +1,20 @@
+[
+  {
+    "id": "c01",
+    "nombre": "Camisa Negra Apocalíptica",
+    "tags": ["camisa", "negra", "oscura", "elegante", "gladiador"],
+    "precio": 120
+  },
+  {
+    "id": "c02",
+    "nombre": "Sudadera Blanca Neon Soul",
+    "tags": ["sudadera", "blanca", "neon", "futurista"],
+    "precio": 150
+  },
+  {
+    "id": "c03",
+    "nombre": "Pantalón Tech Core",
+    "tags": ["pantalón", "moderno", "futurista", "urbano"],
+    "precio": 180
+  }
+]

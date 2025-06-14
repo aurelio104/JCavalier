@@ -1,0 +1,48 @@
+Perfecto. Aquí tenés un resumen completo y actualizado del estado actual de tu Bot Inteligente de WhatsApp JCAVALIER, construido desde cero, modular, y potenciado con OpenAI.
+
+🤖 Resumen General del Bot Inteligente JCAVALIER
+
+📌 Tecnologías principales
+WhatsApp: conexión vía @whiskeysockets/baileys
+TypeScript: base del proyecto
+OpenAI: análisis de intención, emoción y procesamiento de lenguaje
+Persistencia: memoria de usuario evolutiva en archivo JSON (pronto migrable a MongoDB)
+🧠 Características de Inteligencia Avanzada
+
+✅ Conciencia y Contexto
+Detecta si el usuario es nuevo o recurrente
+Saluda con nombre + hora del día (buen día/tarde/noche)
+Recuerda la última vez que conversó y qué dijo
+✅ Emoción
+Analiza el tono emocional del mensaje: positivo, neutral o negativo
+Reacciona con empatía ante frustración, ofreciendo ayuda humana si es necesario
+✅ Intención
+Detecta automáticamente si el usuario:
+Saluda
+Quiere comprar
+Tiene una pregunta
+Está reclamando
+Quiere hacer seguimiento de un pedido
+Otras
+✅ Comunicación Natural
+Conversaciones fluidas, tono humano, empático y adaptativo
+Manejo de mensajes personalizados según el contexto emocional y comercial
+📚 Memoria Evolutiva y Persistente
+
+Cada mensaje queda registrado con:
+Fecha
+Texto
+Emoción detectada
+Intención detectada
+Esta información alimenta el motor de afinidad
+El historial permite aprendizaje por usuario
+🛒 Motor de Afinidad Avanzado
+
+Analiza la historia completa del usuario: textos, emociones e intenciones
+Extrae palabras clave y tags relacionados con productos
+Calcula afinidad emocional y comercial por frecuencia y tono
+Sugiere productos personalizados en base a:
+Lo que el usuario conversó
+Cómo se sintió al respecto
+Qué productos están relacionados
+Usa un catálogo estructurado con tags para cada ítem

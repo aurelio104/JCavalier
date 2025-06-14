@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "rootDir": "./",
+    "outDir": "./dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node",
+    "baseUrl": "./",
+    "paths": {
+      "@intelligence/*": ["src/intelligence/*"],
+      "@memory/*": ["src/memory/*"],
+      "@flows/*": ["src/flows/*"],
+      "@services/*": ["src/services/*"],
+      "@utils/*": ["src/utils/*"],
+      "@schemas/*": ["src/schemas/*"],
+      "@models/*": ["src/database/models/*"],
+      "@types/*": ["src/types/*"],
+      "@data/*": ["src/data/*"],
+      "@/*": ["src/*"]
+    }
+  },
+  "include": [
+    "src/**/*",
+    "index.ts",
+    "global.d.ts",
+    "src/types/**/*"  // Asegúrate de que esto esté incluido
+  ],
+  "exclude": ["node_modules", "dist"]
+}
