@@ -1,23 +1,37 @@
-// 📁 src/ocr/ocr.validators/binance.validator.ts
 import { empresaConfig } from '../../config/empresaConfig'
 
 export function validateBinance(ocrText: string, montoEsperado: number) {
-  const correoRegex = /[\w.-]+@[\w.-]+/i
-  const montoRegex = /(\d+(\.\d{1,2})?)\s*USDT/
+  const texto = ocrText.toLowerCase()
 
-  const correoMatch = ocrText.match(correoRegex)
-  const montoMatch = ocrText.match(montoRegex)
-
+  // Regex robusto para correos
+  const correoRegex = /[\w.-]+@[\w.-]+\.\w+/i
+  const correoMatch = texto.match(correoRegex)
   const correoDetectado = correoMatch?.[0] || ''
-  const montoDetectado = montoMatch ? parseFloat(montoMatch[1]) : 0
 
-  const correoValido = correoDetectado === empresaConfig.metodosPago.binance.correo
+  // Regex robusto para montos con USDT: acepta "12.50 USDT", "12,50USDT", etc.
+  const montoRegex = /(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)\s*usdt/i
+  const montoMatch = texto.match(montoRegex)
+
+  const montoDetectado = montoMatch
+    ? parseFloat(montoMatch[1].replace(/\./g, '').replace(',', '.')) // acepta tanto 1.234,56 como 1,234.56
+    : 0
+
+  const correoEsperado = empresaConfig.metodosPago.binance.correo.toLowerCase().trim()
+  const correoValido = correoDetectado.toLowerCase().trim() === correoEsperado
   const montoValido = Math.abs(montoDetectado - montoEsperado) < 1
 
   return {
     valido: correoValido && montoValido,
-    correoDetectado,
+    correoDetectado: correoDetectado || 'No detectado',
     montoDetectado,
-    resumen: `🪙 Binance Detectado\nCorreo: ${correoDetectado}\nMonto: ${montoDetectado} USDT`
+    resumen: `🪙 *Binance Detectado*
+Correo: ${correoDetectado || 'No detectado'}
+Monto: ${montoDetectado ? `${montoDetectado.toFixed(2)} USDT` : 'No detectado'}
+
+${
+  correoValido && montoValido
+    ? '✅ Comprobante válido. Gracias por tu pago en Binance.'
+    : '❌ El comprobante no coincide con los datos esperados.'
+}`
   }
 }

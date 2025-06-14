@@ -32,6 +32,7 @@ import { detectLanguageFromHistory, maybeTranslateToSpanish } from '@utils/lang'
 import { quickReacts } from '@utils/responses'
 import { empresaConfig } from '../config/empresaConfig'
 import { validarComprobante } from '../ocr/ocr.masterValidator'
+import { leerTextoDesdeImagen } from '../ocr/ocr.reader'
 import fs from 'fs/promises'
 import path from 'path'
 import { randomUUID } from 'crypto'
@@ -186,17 +187,16 @@ export async function startBot() {
       userMemory = await getUser(from)
 
       const buffer = await downloadMediaMessage(msg, 'buffer', {})
-const tempDir = path.join(__dirname, '../../temp')
-await fs.mkdir(tempDir, { recursive: true }) // crea la carpeta si no existe
-const tempPath = path.join(tempDir, `${randomUUID()}.jpg`)
-await fs.writeFile(tempPath, buffer)
+      const tempPath = path.join(__dirname, `../../temp/${randomUUID()}.jpg`)
+      await fs.writeFile(tempPath, buffer)
 
       void sock.sendMessage(from, {
         text: `📸 Imagen recibida para análisis. Gracias, ${name}.`
       })
 
+      const textoDetectado = await leerTextoDesdeImagen(tempPath)
       const totalEsperado = parseFloat(userMemory?.total || '0')
-      const resultadoOCR = await validarComprobante(tempPath, totalEsperado)
+      const resultadoOCR = validarComprobante(textoDetectado, totalEsperado)
       await fs.unlink(tempPath)
 
       void sock.sendMessage(from, { text: resultadoOCR.resumen })
@@ -206,6 +206,30 @@ await fs.writeFile(tempPath, buffer)
           text: `⚠️ El comprobante no coincide con los datos esperados. Por favor, verifica el monto o el correo y vuelve a intentarlo.`
         })
         return
+      }
+
+      const fakeCtx = { from, body: '', pushName: name }
+
+      if (typeof (deliveryFlow as any)?.__run === 'function') {
+        await (deliveryFlow as any).__run(fakeCtx, {
+          flowDynamic: async (msg: string | string[]) => {
+            void sock.sendMessage(from, { text: Array.isArray(msg) ? msg.join('\n\n') : msg })
+          },
+          gotoFlow: async () => {},
+          state: {
+            getMyState: async () => ({ ...userMemory!, esperandoComprobante: false }),
+            update: async () => {
+              await saveConversationToMongo(from, {
+                ...userMemory!,
+                esperandoComprobante: false
+              })
+            },
+            clear: async () => {}
+          },
+          fallBack: async () => {
+            void sock.sendMessage(from, { text: 'No entendí tu mensaje, ¿podés repetirlo?' })
+          }
+        })
       }
 
       return

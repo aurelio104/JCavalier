@@ -1,5 +1,3 @@
-// ✅ src/ocr/ocr.masterValidator.ts
-
 import { validatePagoMovil } from './ocr.validators/pagoMovil.validator'
 import { validateZelle } from './ocr.validators/zelle.validator'
 import { validateBinance } from './ocr.validators/binance.validator'
@@ -12,13 +10,21 @@ export interface ValidacionResult {
   correoDetectado?: string
   fechaDetectada?: string
   resumen: string
+  telefonoDetectado?: string
+  titularDetectado?: string
 }
 
 export function validarComprobante(textoOCR: string, montoEsperado: number): ValidacionResult {
   const lower = textoOCR.toLowerCase()
 
-  // Detectar tipo y llamar al validador correspondiente
-  if (lower.includes('pago movil') || lower.includes('numero de celular') || lower.includes('banesco')) {
+  // 1. Pago móvil
+  if (
+    lower.includes('pago movil') ||
+    lower.includes('número de celular') ||
+    lower.includes('banesco') ||
+    lower.includes('mercantil') ||
+    lower.includes('venezuela') // casos comunes en OCR
+  ) {
     const resultado = validatePagoMovil(textoOCR, montoEsperado)
     return {
       tipo: 'pago_movil',
@@ -27,7 +33,11 @@ export function validarComprobante(textoOCR: string, montoEsperado: number): Val
     }
   }
 
-  if (lower.includes('zelle') || lower.includes('@')) {
+  // 2. Zelle
+  if (
+    (lower.includes('zelle') || lower.includes('@')) &&
+    lower.includes('pago')
+  ) {
     const resultado = validateZelle(textoOCR, montoEsperado)
     return {
       tipo: 'zelle',
@@ -36,6 +46,7 @@ export function validarComprobante(textoOCR: string, montoEsperado: number): Val
     }
   }
 
+  // 3. Binance / USDT
   if (lower.includes('usdt') || lower.includes('binance')) {
     const resultado = validateBinance(textoOCR, montoEsperado)
     return {
@@ -45,7 +56,14 @@ export function validarComprobante(textoOCR: string, montoEsperado: number): Val
     }
   }
 
-  if (lower.includes('transferencia') || lower.includes('numero de cuenta') || lower.includes('titular')) {
+  // 4. Transferencia
+  if (
+    lower.includes('transferencia') ||
+    lower.includes('número de cuenta') ||
+    lower.includes('titular') ||
+    lower.includes('banco') ||
+    lower.includes('bs')
+  ) {
     const resultado = validateTransferencia(textoOCR, montoEsperado)
     return {
       tipo: 'transferencia',
@@ -54,6 +72,7 @@ export function validarComprobante(textoOCR: string, montoEsperado: number): Val
     }
   }
 
+  // 5. No detectado
   return {
     tipo: 'desconocido',
     valido: false,
@@ -65,12 +84,14 @@ function generarResumen(tipo: string, result: Omit<ValidacionResult, 'tipo'>): s
   return `📑 *Análisis de Comprobante (${tipo})*
 
 📧 Correo: ${result.correoDetectado || 'No encontrado'}
-💰 Monto: ${result.montoDetectado ? `$${result.montoDetectado}` : 'No detectado'}
+📱 Teléfono: ${result.telefonoDetectado || 'No detectado'}
+👤 Titular: ${result.titularDetectado || 'No detectado'}
+💰 Monto: ${result.montoDetectado ? `$${result.montoDetectado.toFixed(2)}` : 'No detectado'}
 📅 Fecha: ${result.fechaDetectada || 'No detectada'}
 
 ${
-    result.valido
-      ? '✅ Comprobante válido. ¡Continuamos con tu pedido!'
-      : '❌ El comprobante no coincide con el monto esperado. Por favor revisa y vuelve a enviarlo.'
-  }`
+  result.valido
+    ? '✅ Comprobante válido. ¡Continuamos con tu pedido!'
+    : '❌ El comprobante no coincide con los datos esperados.'
+}`
 }
