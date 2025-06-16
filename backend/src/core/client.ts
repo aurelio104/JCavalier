@@ -137,7 +137,9 @@ export async function startBot() {
         total: total.toFixed(2),
         ultimaIntencion: 'order',
         fechaUltimaCompra: Date.now(),
-        esperandoComprobante: true
+        esperandoComprobante: true,
+        tasaBCV: 0,
+        metodoPago: ''
       } as UserMemory
 
       await saveConversationToMongo(from, userMemory)
@@ -196,7 +198,9 @@ export async function startBot() {
 
       const textoDetectado = await leerTextoDesdeImagen(tempPath)
       const totalEsperado = parseFloat(userMemory?.total || '0')
-      const resultadoOCR = validarComprobante(textoDetectado, totalEsperado)
+      const tasaBCV = (userMemory as any)?.tasaBCV || 0
+      const metodo = (userMemory as any)?.metodoPago || ''
+      const resultadoOCR = validarComprobante(textoDetectado, totalEsperado, metodo, tasaBCV)
       await fs.unlink(tempPath)
 
       void sock.sendMessage(from, { text: resultadoOCR.resumen })

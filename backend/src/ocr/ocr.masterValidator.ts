@@ -12,86 +12,165 @@ export interface ValidacionResult {
   resumen: string
   telefonoDetectado?: string
   titularDetectado?: string
+  referenciaDetectada?: string
 }
 
-export function validarComprobante(textoOCR: string, montoEsperado: number): ValidacionResult {
-  const lower = textoOCR.toLowerCase()
+// 💱 Formatear monto en Bs
+const formatBs = (monto: number): string =>
+  monto.toLocaleString('es-VE', {
+    style: 'currency',
+    currency: 'VES',
+    minimumFractionDigits: 2
+  }).replace('Bs', 'Bs')
 
-  // 1. Pago móvil
+// 🧠 Función principal de validación
+export function validarComprobante(
+  textoOCR: string,
+  totalEsperadoUSD: number,
+  metodoEsperado: string = '',
+  tasaBCV: number = 0
+): ValidacionResult {
+  const lower = textoOCR.toLowerCase()
+  const match = (keyword: string) => metodoEsperado.toLowerCase().includes(keyword)
+
+  // ❌ Filtro universal para comprobantes rechazados
   if (
-    lower.includes('pago movil') ||
-    lower.includes('número de celular') ||
-    lower.includes('banesco') ||
-    lower.includes('mercantil') ||
-    lower.includes('venezuela') // casos comunes en OCR
+    lower.includes('transacción fallida') ||
+    lower.includes('transaccion fallida') ||
+    lower.includes('pago fallido') ||
+    lower.includes('error en la transacción') ||
+    lower.includes('no fue posible procesar') ||
+    lower.includes('rechazada') ||
+    lower.includes('operación fallida')
   ) {
-    const resultado = validatePagoMovil(textoOCR, montoEsperado)
+    return {
+      tipo: 'desconocido',
+      valido: false,
+      correoDetectado: 'No detectado',
+      montoDetectado: undefined,
+      fechaDetectada: undefined,
+      telefonoDetectado: undefined,
+      titularDetectado: undefined,
+      referenciaDetectada: 'No detectada',
+      resumen: '❌ El comprobante indica que la transacción falló. Por favor, intenta nuevamente.'
+    }
+  }
+
+  // 📲 Pago Móvil (detectado por número celular)
+  if (
+    match('pago movil') ||
+    lower.includes('número celular') ||
+    lower.includes('celular de origen') ||
+    lower.includes('celular de destino')
+  ) {
+    const resultado = validatePagoMovil(textoOCR, totalEsperadoUSD)
     return {
       tipo: 'pago_movil',
       ...resultado,
-      resumen: generarResumen('Pago Móvil', resultado)
+      resumen: generarResumen('Pago Móvil', resultado, true, tasaBCV)
     }
   }
 
-  // 2. Zelle
+  // 💸 Zelle
   if (
-    (lower.includes('zelle') || lower.includes('@')) &&
-    lower.includes('pago')
+    match('zelle') ||
+    lower.includes('zelle') ||
+    (lower.includes('@') && lower.includes('.com')) ||
+    lower.includes('enviado a') ||
+    lower.includes('inscrito como') ||
+    lower.includes('adv plus banking') ||
+    lower.includes('cantidad') ||
+    lower.includes('confirmación') ||
+    lower.includes('$')
   ) {
-    const resultado = validateZelle(textoOCR, montoEsperado)
+    const resultado = validateZelle(textoOCR, totalEsperadoUSD)
     return {
       tipo: 'zelle',
       ...resultado,
-      resumen: generarResumen('Zelle', resultado)
+      resumen: generarResumen('Zelle', resultado, false)
     }
   }
 
-  // 3. Binance / USDT
-  if (lower.includes('usdt') || lower.includes('binance')) {
-    const resultado = validateBinance(textoOCR, montoEsperado)
+  // 🪙 Binance
+  if (
+    match('binance') ||
+    lower.includes('usdt') ||
+    lower.includes('binance') ||
+    lower.includes('pago exitoso') ||
+    lower.includes('id de orden') ||
+    lower.includes('fondos')
+  ) {
+    const resultado = validateBinance(textoOCR, totalEsperadoUSD)
     return {
       tipo: 'binance',
       ...resultado,
-      resumen: generarResumen('Binance', resultado)
+      resumen: generarResumen('Binance', resultado, false)
     }
   }
 
-  // 4. Transferencia
+  // 🏦 Transferencia (detectado por cuenta bancaria)
   if (
-    lower.includes('transferencia') ||
+    match('transferencia') ||
     lower.includes('número de cuenta') ||
-    lower.includes('titular') ||
-    lower.includes('banco') ||
-    lower.includes('bs')
+    lower.includes('cuenta del banco') ||
+    lower.includes('beneficiario')
   ) {
-    const resultado = validateTransferencia(textoOCR, montoEsperado)
+    const resultado = validateTransferencia(textoOCR, totalEsperadoUSD)
     return {
       tipo: 'transferencia',
       ...resultado,
-      resumen: generarResumen('Transferencia Bancaria', resultado)
+      resumen: generarResumen('Transferencia Bancaria', resultado, true, tasaBCV)
     }
   }
 
-  // 5. No detectado
+  // ❌ No detectado
   return {
     tipo: 'desconocido',
     valido: false,
-    resumen: '❌ No se pudo determinar el tipo de comprobante. Asegúrate de enviar una imagen clara y legible.'
+    correoDetectado: 'No detectado',
+    montoDetectado: undefined,
+    fechaDetectada: undefined,
+    telefonoDetectado: undefined,
+    titularDetectado: undefined,
+    referenciaDetectada: 'No detectada',
+    resumen:
+      '❌ No se pudo determinar el tipo de comprobante. Asegúrate de enviar una imagen clara y legible.'
   }
 }
 
-function generarResumen(tipo: string, result: Omit<ValidacionResult, 'tipo'>): string {
-  return `📑 *Análisis de Comprobante (${tipo})*
+// 📑 Genera el resumen del análisis
+function generarResumen(
+  tipo: string,
+  result: Omit<ValidacionResult, 'tipo' | 'resumen'>,
+  mostrarBs: boolean,
+  tasaBCV: number = 0
+): string {
+  const montoUSD = result.montoDetectado != null
+    ? `$${result.montoDetectado.toFixed(2)}`
+    : 'No detectado'
 
-📧 Correo: ${result.correoDetectado || 'No encontrado'}
-📱 Teléfono: ${result.telefonoDetectado || 'No detectado'}
-👤 Titular: ${result.titularDetectado || 'No detectado'}
-💰 Monto: ${result.montoDetectado ? `$${result.montoDetectado.toFixed(2)}` : 'No detectado'}
-📅 Fecha: ${result.fechaDetectada || 'No detectada'}
+  const montoBs = mostrarBs && result.montoDetectado != null && tasaBCV > 0
+    ? ` | ${formatBs(result.montoDetectado * tasaBCV)}`
+    : ''
 
-${
-  result.valido
-    ? '✅ Comprobante válido. ¡Continuamos con tu pedido!'
-    : '❌ El comprobante no coincide con los datos esperados.'
-}`
+  const lineaMonto = `💰 Monto: ${montoUSD}${montoBs}`
+
+  const base = [
+    `📑 *Análisis de Comprobante (${tipo})*`,
+    tipo === 'zelle' || tipo === 'binance' ? `📧 Correo: ${result.correoDetectado ?? 'No encontrado'}` : null,
+    tipo === 'pago_movil' ? `📱 Teléfono: ${result.telefonoDetectado ?? 'No detectado'}` : null,
+    tipo === 'transferencia' || tipo === 'pago_movil' ? `👤 Titular: ${result.titularDetectado ?? 'No detectado'}` : null,
+    tipo === 'binance' && result.titularDetectado && result.titularDetectado !== 'No detectado'
+      ? `🏦 Método de pago: ${result.titularDetectado}`
+      : null,
+    `🔢 Referencia: ${result.referenciaDetectada ?? 'No detectada'}`,
+    lineaMonto,
+    `📅 Fecha: ${result.fechaDetectada ?? 'No detectada'}`,
+    '',
+    result.valido
+      ? '✅ Comprobante válido. ¡Continuamos con tu pedido!'
+      : '❌ El comprobante no coincide con los datos esperados.'
+  ]
+
+  return base.filter(Boolean).join('\n')
 }

@@ -25,9 +25,11 @@ contacto: {
       cuenta: '0124 0099 123 121212',
       titular: 'Jhonny Sanchez',
     },
-    zelle: {
-      correo: 'jcavalier@gmail.com',
-    },
+zelle: {
+  correo: 'jcavalier@gmail.com',
+  titular: 'ANGEL SEMECO'
+},
+
     binance: {
       correo: 'jcavalier@gmail.com',
     },

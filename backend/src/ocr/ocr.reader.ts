@@ -1,24 +1,15 @@
-// ✅ src/ocr/ocr.reader.ts — Versión funcional sin errores de tipo
+// ✅ src/ocr/ocr.reader.ts — OCR multilingüe (español + inglés)
 
 import { createWorker } from 'tesseract.js'
 import path from 'path'
+import fs from 'fs/promises'
 
 let worker: any = null
 let workerInitialized = false
 
 async function inicializarWorker() {
   if (workerInitialized) return
-
-  worker = await createWorker({
-    // 👇 Esta opción es válida, pero TypeScript no lo reconoce salvo con `any`
-    // Alternativamente puedes quitarla si no deseas ver logs del OCR
-    // logger: (m: any) => console.log('[OCR]', m)
-  } as any) // 👈 Evita el error "logger no existe" con `as any`
-
-  await worker.load()
-  await worker.loadLanguage('spa') // 👈 Esto sí existe en tiempo de ejecución
-  await worker.initialize('spa')
-
+  worker = await createWorker('spa+eng') // 🧠 Idiomas combinados: español + inglés
   workerInitialized = true
 }
 
@@ -27,13 +18,20 @@ export async function leerTextoDesdeImagen(rutaImagen: string): Promise<string> 
     await inicializarWorker()
 
     const imagePath = path.resolve(rutaImagen)
-    const { data } = await worker.recognize(imagePath)
-    const texto = data.text.trim()
+    const exists = await fs.stat(imagePath).then(() => true).catch(() => false)
+    if (!exists) throw new Error(`❌ Imagen no encontrada en la ruta: ${imagePath}`)
 
-    console.log('🧾 Texto detectado OCR:', texto)
+    const { data } = await worker.recognize(imagePath)
+    let texto = data.text.trim()
+
+    // 🧽 Limpieza básica del texto OCR
+    texto = texto.replace(/\s{2,}/g, ' ').replace(/\n+/g, '\n').trim()
+
+    console.log('🧾 Texto detectado OCR:')
+    console.log(texto)
     return texto
-  } catch (error) {
-    console.error('❌ Error al leer imagen con OCR:', error)
+  } catch (error: any) {
+    console.error('❌ Error al leer imagen con OCR:', error.message || error)
     return ''
   }
 }
