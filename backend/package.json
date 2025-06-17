@@ -3,11 +3,12 @@
   "version": "1.0.0",
   "description": "Bot inteligente para WhatsApp con AI, memoria y pagos.",
   "main": "dist/index.js",
-  "scripts": {
-    "dev": "concurrently \"ts-node -r tsconfig-paths/register server.ts\" \"ts-node -r tsconfig-paths/register index.ts\"",
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "test": "echo \"No hay pruebas definidas aún\" && exit 1"
+"scripts": {
+  "dev": "concurrently \"ts-node -r tsconfig-paths/register server.ts\" \"ts-node -r tsconfig-paths/register index.ts\"",
+  "build": "tsc",
+"start": "ts-node -r tsconfig-paths/register index.ts",
+  "test": "echo \"No hay pruebas definidas aún\" && exit 1"
+
   },
   "keywords": [
     "whatsapp",
