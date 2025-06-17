@@ -19,7 +19,7 @@
   ],
   "author": "JCAVALIER",
   "license": "ISC",
-  "packageManager": "pnpm@10.11.0",
+  "packageManager": "pnpm@10.12.0",
   "dependencies": {
     "@bot-whatsapp/bot": "^0.1.38",
     "@whiskeysockets/baileys": "^6.7.18",
