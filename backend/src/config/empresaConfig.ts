@@ -45,9 +45,11 @@ zelle: {
       descripcion: 'Retiro en la tienda, coordinando el horario.',
       ubicacion: 'Nuestra tienda está ubicada en La Coromoto, Calle Mérida Número 5, al lado del Colegio, Unidad Educativa Amelia Linares, Maracay, Edo. Aragua, Venezuela.',
     },
-    delivery: {
-      descripcion: 'Delivery solo para Maracay centro. Necesitamos tu dirección y contacto.',
-    },
+delivery: {
+  descripcion: 'Delivery solo para Maracay centro. Necesitamos tu dirección y contacto.',
+  costo: 2 // o el valor que desees en bolívares
+},
+
     encomienda: {
       descripcion: 'Envío nacional. Necesitamos detalles de tu dirección completa.',
     },

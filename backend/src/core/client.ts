@@ -124,13 +124,14 @@ export async function startBot() {
       }
 
       msg.message.conversation = transcripcion
-      rawText = transcripcion // ✅ Esto asegura que se procese como texto
+      rawText = transcripcion
     }
 
     let userMemory: UserMemory | null = await getUser(from)
     const lang = detectLanguageFromHistory(userMemory?.history?.map(h => h.message) || [], rawText)
     const text = await maybeTranslateToSpanish(rawText, lang)
     const lower = text.toLowerCase()
+    const normalized = removeAccents(lower)
 
     const perfil = detectarPerfilDeCompra(lower)
     const frecuencia = calcularFrecuencia(userMemory?.history || [])
@@ -216,11 +217,25 @@ export async function startBot() {
       return
     }
 
-    const esMetodoPago = ['pago', 'transferencia', 'zelle', 'binance', 'efectivo'].some(w =>
-      lower.includes(w)
-    )
+    const preguntaDePago = /((metodos?|formas?) de pagos?|como (puedo )?pagar|aceptan|quiero pagar|puedo pagar con|cu[aá]les son los m[ée]todos? de pagos?)/i.test(normalized)
+    const esSeleccionDeMetodo = ['pago movil', 'transferencia', 'zelle', 'binance', 'efectivo']
+      .some(w => normalized.includes(w)) &&
+      userMemory?.ultimaIntencion === 'order' &&
+      userMemory?.esperandoComprobante === true
 
-    if (esMetodoPago && userMemory?.ultimaIntencion === 'order') {
+    if (preguntaDePago && !esSeleccionDeMetodo) {
+      const metodos = Object.keys(empresaConfig.metodosPago)
+        .map((metodo: string) =>
+          `✅ ${metodo.replace(/([A-Z])/g, ' $1').replace(/^./, l => l.toUpperCase())}`
+        ).join('\n')
+
+      void sock.sendMessage(from, {
+        text: `💳 Aceptamos estos métodos de pago:\n\n${metodos}\n\nCuando elijas uno, te enviaré los datos para completar tu pago.`
+      })
+      return
+    }
+
+    if (esSeleccionDeMetodo) {
       const fakeCtx = { from, body: text, pushName: name }
 
       await paymentActions.pasoProcesarMetodo(fakeCtx, {
@@ -252,7 +267,7 @@ export async function startBot() {
       await fs.writeFile(tempPath, buffer)
 
       void sock.sendMessage(from, {
-        text: `📸 Imagen recibida para análisis. Gracias, ${name}.`
+        text: `\ud83d\udcf8 Imagen recibida para an\u00e1lisis. Gracias, ${name}.`
       })
 
       const textoDetectado = await leerTextoDesdeImagen(tempPath)
@@ -274,19 +289,43 @@ export async function startBot() {
 
       if (!resultadoOCR.valido) {
         void sock.sendMessage(from, {
-          text: `⚠️ El comprobante no coincide con los datos esperados. Por favor, verifica el monto o el correo y vuelve a intentarlo.`
+          text: `\u26a0\ufe0f El comprobante no coincide con los datos esperados. Por favor, verifica el monto o el correo y vuelve a intentarlo.`
         })
         return
       }
 
-      await saveConversationToMongo(from, {
-        ...(userMemory || {}),
-        esperandoComprobante: false,
-        ultimaIntencion: 'delivery'
-      })
+      // \u2714\ufe0f ACTUALIZAR EN MEMORIA TAMBI\u00c9N
+      userMemory.esperandoComprobante = false
+      userMemory.ultimaIntencion = 'delivery'
+
+      await saveConversationToMongo(from, userMemory)
 
       await runDeliveryFlowManualmente(
         { from, body: '', pushName: name },
+        {
+          flowDynamic: async (msg: string | string[]) => {
+            void sock.sendMessage(from, { text: Array.isArray(msg) ? msg.join('\n\n') : msg })
+          },
+          gotoFlow: async () => {},
+          state: {
+            getMyState: async () => userMemory!,
+            update: async (d: Partial<UserMemory>) => {
+              Object.assign(userMemory!, d)
+              await saveConversationToMongo(from, userMemory!)
+            },
+            clear: async () => {}
+          },
+          fallBack: async () => {
+            void sock.sendMessage(from, { text: 'No entend\u00ed tu mensaje, \u00bfpod\u00e9s repetirlo?' })
+          }
+        }
+      )
+      return
+    }
+    
+    if (isText && userMemory?.ultimaIntencion === 'delivery') {
+      await runDeliveryFlowManualmente(
+        { from, body: text, pushName: name },
         {
           flowDynamic: async (msg: string | string[]) => {
             void sock.sendMessage(from, { text: Array.isArray(msg) ? msg.join('\n\n') : msg })
@@ -308,20 +347,11 @@ export async function startBot() {
       return
     }
 
-    if (isText && userMemory?.esperandoComprobante) {
-      void sock.sendMessage(from, {
-        text: '⏳ Seguimos esperando tu *comprobante de pago* para avanzar con la entrega.\nPor favor, envíalo por aquí en cuanto lo tengas. 😊'
-      })
-      return
-    }
-
-    const normalized = removeAccents(lower)
     const keywordsUbicacion = [
       'ubicacion', 'ubicacion exacta', 'ubicados', 'direccion', 'direcion', 'donde estan',
       'donde estan ubicados', 'donde queda la tienda', 'como llegar', 'mapa', 'punto de venta'
     ]
 
-    
     if (keywordsUbicacion.some(k => normalized.includes(k))) {
       const { direccion, telefono, correo, ubicacionURL } = empresaConfig.contacto
       void sock.sendMessage(from, {
@@ -330,24 +360,7 @@ export async function startBot() {
       return
     }
 
-const regexPago = /((metodos?|formas?) de pagos?|como (puedo )?pagar|aceptan|quiero pagar|puedo pagar con|cu[aá]les son los m[ée]todos? de pagos?)/i
-
-if (regexPago.test(normalized)) {
-  const metodos = Object.keys(empresaConfig.metodosPago)
-    .map((metodo: string) =>
-      `✅ ${metodo
-        .replace(/([A-Z])/g, ' $1') // separa palabras en camelCase
-        .replace(/^./, l => l.toUpperCase())}` // primera letra en mayúscula
-    )
-    .join('\n')
-
-  void sock.sendMessage(from, {
-    text: `💳 Aceptamos estos métodos de pago:\n\n${metodos}\n\nCuando elijas uno, te enviaré los datos para completar tu pago.`
-  })
-  return
-}
-
-  const intentHandled = await handleIntentRouter(text, sock, from, msg)
+    const intentHandled = await handleIntentRouter(text, sock, from, msg)
     if (intentHandled) return
 
     const emotion: Emotion = analyzeEmotion(text)

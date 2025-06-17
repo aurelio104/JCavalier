@@ -1,4 +1,4 @@
-// ✅ src/flows/delivery.flow.ts
+/// <reference path="../types/manual.d.ts" />
 
 import { addKeyword, FlowFnProps } from '@bot-whatsapp/bot'
 import { saveConversationToMongo } from '@memory/memory.mongo'
@@ -10,6 +10,7 @@ const deliveryActions: ((ctx: FlowFnProps['ctx'], tools: Omit<FlowFnProps, 'ctx'
 const flow = addKeyword(['__delivery'])
 
 // Paso 1 – Preguntar tipo de entrega
+// (se activa manualmente o si no se ha respondido aún)
 deliveryActions.push(
   async (ctx, { flowDynamic }) => {
     console.log('🚚 deliveryFlow activado para:', ctx.from)
@@ -18,7 +19,7 @@ deliveryActions.push(
       '',
       `1️⃣ *Retiro personal*`,
       `2️⃣ *Delivery* (solo Maracay centro)`,
-      `3️⃣ *Encomienda nacional*`
+      `3️⃣ *Encomienda nacional`
     ])
   }
 )
@@ -27,26 +28,40 @@ flow.addAction(deliveryActions[0])
 // Configuración de opciones
 const opcionesEntrega = [
   {
-    claves: ['1', 'retiro', 'personal', 'tienda', 'buscar', 'voy a buscar', 'retirar', 'recoger', 'yo mismo'],
+    claves: ['1', 'retiro', 'personal', 'tienda', 'buscar', 'voy a buscar', 'retirar', 'recoger', 'yo mismo', 'paso buscando'],
     tipo: 'Retiro personal',
-    mensaje: `🛍️ ¡Genial! Podrás retirar tu pedido personalmente en nuestra tienda de *${empresaConfig.nombre}*.\n\nNos estaremos comunicando contigo para coordinar el mejor horario. 😊`,
+    mensaje: `🛍️ ¡Genial! Podrás retirar tu pedido personalmente en nuestra tienda de *${empresaConfig.nombre}*.
+
+📍 Nuestra dirección: ${empresaConfig.contacto.direccion}
+🌐 Ubicación: ${empresaConfig.contacto.ubicacionURL}
+
+Nos estaremos comunicando contigo para coordinar el mejor horario. 😊`,
     requiereDatos: false
   },
   {
-    claves: ['2', 'delivery', 'envío', 'envio', 'entrega', 'enviar a casa', 'hasta mi casa', 'lo traen', 'mandar'],
+    claves: ['2', 'delivery', 'envío', 'envio', 'entrega', 'enviar a casa', 'hasta mi casa', 'lo traen', 'mandar', 'cuánto cuesta el delivery', 'precio del delivery', 'cuánto cobran'],
     tipo: 'Delivery (Maracay centro)',
-    mensaje: `🚚 ¡Perfecto! Por favor envíanos tu *dirección exacta en Maracay* y un *número de contacto* para coordinar la entrega.`,
+    mensaje: `🚚 ¡Perfecto! Por favor envíanos tu *dirección exacta en Maracay* y un *número de contacto* para coordinar la entrega. 
+
+💰 *Costo del delivery:* Bs. ${empresaConfig.opcionesEntrega.delivery?.costo ?? 'variable según zona'}.`,
     requiereDatos: true
   },
   {
     claves: ['3', 'encomienda', 'domicilio', 'ciudad', 'estado', 'fuera de maracay', 'otra ciudad', 'envío nacional'],
     tipo: 'Encomienda nacional',
-    mensaje: `📮 Vamos a necesitar algunos datos para realizar el envío:\n\n• Ciudad y estado\n• Dirección completa\n• Código postal (si aplica)\n• Número de contacto\n\n📦 Apenas los tengas, mándalos por aquí y seguimos contigo. 😉`,
+    mensaje: `📮 Vamos a necesitar algunos datos para realizar el envío:
+
+• Ciudad y estado
+• Dirección completa
+• Código postal (si aplica)
+• Número de contacto
+
+📦 Apenas los tengas, mándalos por aquí y seguimos contigo. 😉`,
     requiereDatos: true
   }
 ]
 
-// Paso 2 – Interpretar selección
+// Paso 2 – Interpretar selección inteligente
 deliveryActions.push(
   async (ctx, { state, flowDynamic, gotoFlow }) => {
     const respuesta = ctx.body?.toLowerCase().trim() || ''
@@ -76,14 +91,23 @@ deliveryActions.push(
       return
     }
 
-    // Registrar paso
     await state.update({ tipoEntrega, pasoEntrega: 2 })
     await saveConversationToMongo(ctx.from, { ...userState, tipoEntrega, pasoEntrega: 2 })
 
     await flowDynamic(mensaje)
     console.log('📦 Tipo de entrega seleccionada:', tipoEntrega)
 
-    if (!requiereDatos) return gotoFlow(thankyouFlow)
+    if (!requiereDatos) {
+      await flowDynamic([
+        `📦 *Resumen del pedido:*`,
+        `• Método de entrega: ${tipoEntrega}`,
+        `• Cliente: ${ctx.pushName}`,
+        `• Contacto: ${ctx.from}`,
+        '',
+        `🖤 Gracias por confiar en *${empresaConfig.nombre}*.`
+      ])
+      return gotoFlow(thankyouFlow)
+    }
   }
 )
 flow.addAction(deliveryActions[1])
@@ -100,7 +124,6 @@ deliveryActions.push(
     const userState = await state.getMyState()
     const lower = detalle.toLowerCase()
 
-    // 🧠 Detectar si menciona día de retiro
     const fechaDeseada = lower.match(/el (lunes|martes|miércoles|jueves|viernes|sábado|domingo)/)?.[0]
     const contactoTercero = lower.includes('otra persona') || lower.includes('mi primo') || lower.includes('mi mamá')
 
@@ -120,8 +143,13 @@ deliveryActions.push(
     })
 
     await flowDynamic([
-      '✅ ¡Perfecto! Ya tenemos tus datos de entrega registrados.',
+      `📦 *Resumen del pedido:*`,
+      `• Método de entrega: ${userState.tipoEntrega}`,
+      `• Dirección/Detalles: ${detalle}`,
+      `• Cliente: ${ctx.pushName}`,
+      `• Contacto: ${ctx.from}`,
       '',
+      `✅ ¡Perfecto! Ya tenemos tus datos de entrega registrados.`,
       `🖤 Gracias por confiar en *${empresaConfig.nombre}*. Te mantenemos al tanto del siguiente paso.`
     ])
 
@@ -131,13 +159,16 @@ deliveryActions.push(
 )
 flow.addAction(deliveryActions[2])
 
-// Exportación principal
 export const deliveryFlow = flow
 
-// Función para activarlo manualmente (cuando se detecta desde comprobante por imagen, etc.)
 export async function runDeliveryFlowManualmente(ctx: any, tools: Omit<FlowFnProps, 'ctx'>) {
   const state = await tools.state.getMyState()
-  const pasoActual = state.pasoEntrega || 0
+  let pasoActual = state.pasoEntrega
+
+  if (pasoActual === undefined || pasoActual === 0) {
+    pasoActual = 1
+    await tools.state.update({ pasoEntrega: 1 })
+  }
 
   const siguienteAccion = deliveryActions[pasoActual]
   if (!siguienteAccion) return
