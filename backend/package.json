@@ -6,7 +6,7 @@
 "scripts": {
   "dev": "concurrently \"ts-node -r tsconfig-paths/register server.ts\" \"ts-node -r tsconfig-paths/register index.ts\"",
   "build": "tsc",
-"start": "ts-node -r tsconfig-paths/register index.ts",
+"start": "node -r tsconfig-paths/register dist/index.js",
   "test": "echo \"No hay pruebas definidas aún\" && exit 1"
 
   },
