@@ -11,7 +11,7 @@ export function normalize(text: string): string {
   return text
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -94,7 +94,6 @@ export function isPriceInquiry(message: string): boolean {
   const normalized = normalize(message);
 
   const fuzzyTerms = [
-    // Camisas
     'cuanto cuestan las camisas',
     'precio camisas',
     'precio de camisa',
@@ -102,8 +101,6 @@ export function isPriceInquiry(message: string): boolean {
     'camisas cuanto valen',
     'camisas jcavalier precio',
     'quiero saber el precio de las camisas',
-
-    // Conjuntos / sets / outfits
     'precio conjuntos',
     'cuanto cuestan los conjuntos',
     'cuanto valen los conjuntos',
@@ -114,7 +111,6 @@ export function isPriceInquiry(message: string): boolean {
     'precio set',
     'precio look playa',
     'set old money cuanto cuesta',
-    // Inglés
     'how much is the shirt',
     'how much is the set',
     'price of beach outfits',
@@ -122,4 +118,25 @@ export function isPriceInquiry(message: string): boolean {
   ];
 
   return fuzzyIncludes(normalized, fuzzyTerms);
+}
+
+/**
+ * Clasifica el perfil de comportamiento del usuario
+ */
+export function detectarPerfilDeCompra(text: string): 'explorador' | 'comprador directo' | 'indeciso' {
+  const normalized = normalize(text);
+
+  if (/\b(quiero esto|lo compro|confirmo pedido|hago el pedido|lo llevo|comprar|i want|buy)\b/.test(normalized)) {
+    return 'comprador directo';
+  }
+
+  if (/\b(camisa|conjunto|pantalon|catálogo|colección|ver modelos|outfit|ropa)\b/.test(normalized)) {
+    return 'explorador';
+  }
+
+  if (/\b(como funciona|hay stock|dudas|me explicas|que incluye|puedo pagar con)\b/.test(normalized)) {
+    return 'indeciso';
+  }
+
+  return 'explorador';
 }

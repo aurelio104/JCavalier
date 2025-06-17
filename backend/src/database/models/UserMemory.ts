@@ -6,7 +6,7 @@ import {
   BotIntent
 } from '@schemas/UserMemory'
 
-// Interfaz del documento completo de usuario
+// Interfaz del documento completo de usuario para MongoDB
 export interface UserMemoryDoc extends Document {
   _id: string
   id?: string
@@ -25,6 +25,13 @@ export interface UserMemoryDoc extends Document {
   metodoPago: string
   tipoEntrega: string
   datosEntrega: string
+  preferredStyles?: string[]
+  esperandoComprobante?: boolean
+
+  // Campos para pagos
+  tasaBCV?: number
+  timestampTasaBCV?: number
+  totalBs?: number
 }
 
 const HistorySchema = new Schema<UserHistoryEntry>(
@@ -79,7 +86,14 @@ const UserMemorySchema = new Schema<UserMemoryDoc>(
     total: { type: String, default: '' },
     metodoPago: { type: String, default: '' },
     tipoEntrega: { type: String, default: '' },
-    datosEntrega: { type: String, default: '' }
+    datosEntrega: { type: String, default: '' },
+    preferredStyles: { type: [String], default: [] },
+    esperandoComprobante: { type: Boolean, default: false },
+
+    // Campos para pagos
+    tasaBCV: { type: Number, default: null },
+    timestampTasaBCV: { type: Number, default: null },
+    totalBs: { type: Number, default: null }
   },
   {
     versionKey: false,
@@ -87,14 +101,14 @@ const UserMemorySchema = new Schema<UserMemoryDoc>(
   }
 )
 
-// Campo virtual para compatibilidad con _id → id
+// Campo virtual para compatibilidad _id → id
 UserMemorySchema.virtual('id').get(function () {
   return this._id
 })
 
-// Habilitar virtuals en la conversión a objetos y JSON
+// Activar los virtuals al convertir a objeto o JSON
 UserMemorySchema.set('toObject', { virtuals: true })
 UserMemorySchema.set('toJSON', { virtuals: true })
 
-// Exportar modelo
+// Exportar el modelo
 export const UserMemoryModel = model<UserMemoryDoc>('UserMemory', UserMemorySchema)

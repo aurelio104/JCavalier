@@ -1,12 +1,9 @@
-// ✅ src/intelligence/order.detector.ts
-
 export interface DetectedProduct {
   coleccion: string
   nombre: string
   talla: string
   color: string
   precio: string
-  // Añadimos una propiedad para vuelos
   vuelo?: string
   destino?: string
   aeropuerto?: string
@@ -16,89 +13,77 @@ export interface OrderDetectionResult {
   productos: DetectedProduct[]
   esPedidoValido: boolean
   errores?: string[]
+  mensajeAlCliente?: string
 }
 
 export function parseOrderMessage(message: string): OrderDetectionResult {
   const lines = message
-    .replace(/%0A/g, '\n') // Convierte saltos codificados en saltos reales
+    .replace(/%0A/g, '\n')
     .split('\n')
     .map(line => line.trim())
-    .filter(Boolean)
+    .filter(Boolean);
 
-  const productos: DetectedProduct[] = []
-  let currentProduct: Partial<DetectedProduct> = {}
-  const errores: string[] = []
+  const productos: DetectedProduct[] = [];
+  let currentProduct: Partial<DetectedProduct> = {};
+  const errores: string[] = [];
 
   for (const line of lines) {
-    // Detectamos Colección
     if (line.startsWith('Colección:')) {
-      currentProduct.coleccion = line.replace('Colección:', '').trim()
-    } 
-    // Detectamos Producto
-    else if (line.startsWith('Producto:')) {
-      currentProduct.nombre = line.replace('Producto:', '').trim()
-    } 
-    // Detectamos Talla
-    else if (line.startsWith('Talla:')) {
-      currentProduct.talla = line.replace('Talla:', '').trim()
-    } 
-    // Detectamos Color
-    else if (line.startsWith('Color:')) {
-      currentProduct.color = line.replace('Color:', '').trim()
-    } 
-    // Detectamos Precio
-    else if (line.startsWith('Precio:')) {
-      currentProduct.precio = line.replace('Precio:', '').trim()
-    } 
-    // Detectamos Vuelo
-    else if (line.startsWith('Vuelo:')) {
-      currentProduct.vuelo = line.replace('Vuelo:', '').trim()
-    }
-    // Detectamos Destino
-    else if (line.startsWith('Destino:')) {
-      currentProduct.destino = line.replace('Destino:', '').trim()
-    }
-    // Detectamos Aeropuerto
-    else if (line.startsWith('Aeropuerto:')) {
-      currentProduct.aeropuerto = line.replace('Aeropuerto:', '').trim()
+      currentProduct.coleccion = line.replace('Colección:', '').trim();
+    } else if (line.startsWith('Producto:')) {
+      currentProduct.nombre = line.replace('Producto:', '').trim();
+    } else if (line.startsWith('Talla:')) {
+      currentProduct.talla = line.replace('Talla:', '').trim();
+    } else if (line.startsWith('Color:')) {
+      currentProduct.color = line.replace('Color:', '').trim();
+    } else if (line.startsWith('Precio:')) {
+      currentProduct.precio = line.replace('Precio:', '').trim();
+    } else if (line.startsWith('Vuelo:')) {
+      currentProduct.vuelo = line.replace('Vuelo:', '').trim();
+    } else if (line.startsWith('Destino:')) {
+      currentProduct.destino = line.replace('Destino:', '').trim();
+    } else if (line.startsWith('Aeropuerto:')) {
+      currentProduct.aeropuerto = line.replace('Aeropuerto:', '').trim();
     }
 
-    // Verificamos si todos los detalles del producto están completos
     const isComplete =
       currentProduct.coleccion &&
       currentProduct.nombre &&
       currentProduct.talla &&
       currentProduct.color &&
-      currentProduct.precio
+      currentProduct.precio;
 
     if (isComplete) {
-      productos.push(currentProduct as DetectedProduct)
-      currentProduct = {} // Reiniciar para el siguiente producto
+      productos.push(currentProduct as DetectedProduct);
+      currentProduct = {};
     }
   }
 
-  // Si quedaron campos incompletos al final, los marcamos como errores
   if (Object.keys(currentProduct).length > 0) {
-    errores.push(`Producto incompleto al final del mensaje: ${JSON.stringify(currentProduct)}`)
+    errores.push(`Producto incompleto al final del mensaje: ${JSON.stringify(currentProduct)}`);
   }
 
-  // Verificamos si hay al menos un producto y no hay errores
-  const esPedidoValido = productos.length > 0 && errores.length === 0
+  const esPedidoValido = productos.length > 0 && errores.length === 0;
 
-  return {
+  const resultado: OrderDetectionResult = {
     productos,
     esPedidoValido,
     errores: errores.length > 0 ? errores : undefined
+  };
+
+  if (errores.length > 0) {
+    return {
+      ...resultado,
+      mensajeAlCliente: '⚠️ Parece que tu pedido está incompleto. ¿Podrías decirme la talla, color y nombre del producto para ayudarte?'
+    };
   }
+
+  return resultado;
 }
 
-/**
- * Verifica si el mensaje contiene detalles de un pedido realizado desde el sitio web
- */
 export function contienePedidoDesdeWeb(message: string): boolean {
-  // Verificamos si el mensaje contiene los elementos clave para un pedido confirmado desde el sitio
   return (
     message.includes('🧾 Pedido confirmado desde el sitio JCAVALIER') ||
     (message.includes('Colección:') && message.includes('Producto:') && message.includes('Precio:'))
-  )
+  );
 }

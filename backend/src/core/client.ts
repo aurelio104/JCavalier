@@ -18,7 +18,7 @@ import {
   saveConversationToMongo
 } from '@memory/memory.mongo'
 
-import { detectIntent, analyzeEmotion } from '@intelligence/intent.engine'
+import { detectIntent, analyzeEmotion, detectarPerfilDeCompra } from '@intelligence/intent.engine'
 import { generatePersonalizedReply } from '../intelligence/aiResponder'
 import { Emotion, BotIntent, UserMemory } from '@schemas/UserMemory'
 import {
@@ -26,13 +26,14 @@ import {
   parseOrderMessage
 } from '@intelligence/order.detector'
 import { paymentActions } from '@flows/payment.flow'
-import { deliveryFlow } from '@flows/delivery.flow'
+import { deliveryFlow, runDeliveryFlowManualmente } from '@flows/delivery.flow'
 import { handleIntentRouter } from '@flows/intentHandler.flow'
 import { detectLanguageFromHistory, maybeTranslateToSpanish } from '@utils/lang'
 import { quickReacts } from '@utils/responses'
 import { empresaConfig } from '../config/empresaConfig'
 import { validarComprobante } from '../ocr/ocr.masterValidator'
 import { leerTextoDesdeImagen } from '../ocr/ocr.reader'
+import { transcribirNotaDeVoz } from '../utils/whisper.engine'
 import fs from 'fs/promises'
 import path from 'path'
 import { randomUUID } from 'crypto'
@@ -52,6 +53,14 @@ const silentLogger = {
 
 const removeAccents = (str: string): string =>
   str.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+
+function calcularFrecuencia(historial: { timestamp: number }[]): 'ocasional' | 'frecuente' | 'recurrente' {
+  const now = Date.now()
+  const ultimos7dias = historial.filter(h => now - h.timestamp < 7 * 24 * 60 * 60 * 1000)
+  if (ultimos7dias.length >= 10) return 'recurrente'
+  if (ultimos7dias.length >= 5) return 'frecuente'
+  return 'ocasional'
+}
 
 export async function startBot() {
   await connectMongo()
@@ -94,14 +103,45 @@ export async function startBot() {
     const name = msg.pushName || from.split('@')[0] || 'cliente'
     const isImage = !!msg.message?.imageMessage
     const isText = !!msg.message?.conversation
-    const rawText = isText ? msg.message?.conversation?.trim() || '' : ''
+    const isAudio = !!msg.message?.audioMessage && !msg.message?.audioMessage?.ptt === false
+    let rawText = isText ? msg.message?.conversation?.trim() || '' : ''
 
-    if (!from || (!rawText && !isImage) || from === 'status@broadcast') return
+    if (!from || (!rawText && !isImage && !isAudio) || from === 'status@broadcast') return
+
+    if (isAudio) {
+      const buffer = await downloadMediaMessage(msg, 'buffer', {})
+      const tempPath = path.join(__dirname, `../../temp/${randomUUID()}.mp3`)
+      await fs.writeFile(tempPath, buffer)
+
+      const transcripcion = await transcribirNotaDeVoz(tempPath)
+      await fs.unlink(tempPath)
+
+      if (!transcripcion || transcripcion.length < 3) {
+        await sock.sendMessage(from, {
+          text: '⚠️ No pude entender bien tu nota de voz. ¿Podés repetirlo por texto o reenviarla?'
+        })
+        return
+      }
+
+      msg.message.conversation = transcripcion
+      rawText = transcripcion // ✅ Esto asegura que se procese como texto
+    }
 
     let userMemory: UserMemory | null = await getUser(from)
     const lang = detectLanguageFromHistory(userMemory?.history?.map(h => h.message) || [], rawText)
     const text = await maybeTranslateToSpanish(rawText, lang)
     const lower = text.toLowerCase()
+
+    const perfil = detectarPerfilDeCompra(lower)
+    const frecuencia = calcularFrecuencia(userMemory?.history || [])
+
+    if (userMemory) {
+      userMemory.lastSeen = Date.now()
+      userMemory.lastMessage = text
+      userMemory.profileType = perfil
+      userMemory.frequency = frecuencia
+      if (!userMemory.tags.includes(perfil)) userMemory.tags.push(perfil)
+    }
 
     if (quickReacts[lower]) {
       void sock.sendMessage(from, { text: quickReacts[lower] })
@@ -119,28 +159,46 @@ export async function startBot() {
 
       if (!resultado.esPedidoValido) {
         void sock.sendMessage(from, {
-          text: '⚠️ No pude interpretar correctamente tu pedido.\n¿Podés reenviarlo o escribirlo nuevamente, por favor? 🙏'
+          text: resultado.mensajeAlCliente || '⚠️ No pude interpretar correctamente tu pedido. ¿Podés reenviarlo o escribirlo nuevamente, por favor? 🙏'
         })
         return
       }
 
       const resumen = resultado.productos.map((p, i) =>
-        `🛍️ Producto ${i + 1}:\n•⁠ Colección: ${p.coleccion}\n•⁠ Nombre: ${p.nombre}\n•⁠ Talla: ${p.talla}\n•⁠ Color: ${p.color}\n•⁠ Precio: ${p.precio}`
+        `🛍️ Producto ${i + 1}:
+•⁠ Colección: ${p.coleccion}
+•⁠ Nombre: ${p.nombre}
+•⁠ Talla: ${p.talla}
+•⁠ Color: ${p.color}
+•⁠ Precio: ${p.precio}`
       ).join('\n\n')
 
       const total = resultado.productos.reduce((sum, p) => sum + parseFloat(p.precio), 0)
 
       userMemory = {
-        ...(userMemory || {}),
-        name,
+        ...(userMemory || {
+          _id: from,
+          name,
+          firstSeen: Date.now(),
+          lastSeen: Date.now(),
+          lastMessage: text,
+          tags: [],
+          history: [],
+          emotionSummary: 'neutral',
+          needsHuman: false
+        }),
         productos: resultado.productos.map(p => p.nombre),
         total: total.toFixed(2),
         ultimaIntencion: 'order',
         fechaUltimaCompra: Date.now(),
         esperandoComprobante: true,
+        metodoPago: '',
         tasaBCV: 0,
-        metodoPago: ''
-      } as UserMemory
+        totalBs: 0,
+        lastOrder: resumen,
+        profileType: perfil,
+        frequency: frecuencia
+      }
 
       await saveConversationToMongo(from, userMemory)
 
@@ -172,9 +230,9 @@ export async function startBot() {
         gotoFlow: async () => {},
         state: {
           getMyState: async () => userMemory!,
-          update: async (d) => {
-            await saveConversationToMongo(from, { ...userMemory!, ...d })
-            userMemory = await getUser(from)
+          update: async (d: Partial<UserMemory>) => {
+            Object.assign(userMemory!, d)
+            await saveConversationToMongo(from, userMemory!)
           },
           clear: async () => {}
         },
@@ -187,6 +245,7 @@ export async function startBot() {
 
     if (isImage) {
       userMemory = await getUser(from)
+      if (!userMemory) return
 
       const buffer = await downloadMediaMessage(msg, 'buffer', {})
       const tempPath = path.join(__dirname, `../../temp/${randomUUID()}.jpg`)
@@ -197,12 +256,20 @@ export async function startBot() {
       })
 
       const textoDetectado = await leerTextoDesdeImagen(tempPath)
-      const totalEsperado = parseFloat(userMemory?.total || '0')
-      const tasaBCV = (userMemory as any)?.tasaBCV || 0
-      const metodo = (userMemory as any)?.metodoPago || ''
-      const resultadoOCR = validarComprobante(textoDetectado, totalEsperado, metodo, tasaBCV)
-      await fs.unlink(tempPath)
+      const metodo = userMemory.metodoPago || ''
+      const tasaBCV = userMemory.tasaBCV || 0
+      const totalEsperadoBs = typeof userMemory.totalBs === 'number'
+        ? userMemory.totalBs
+        : parseFloat(userMemory.totalBs || '0')
 
+      const resultadoOCR = validarComprobante(
+        textoDetectado,
+        totalEsperadoBs,
+        metodo,
+        tasaBCV
+      )
+
+      await fs.unlink(tempPath)
       void sock.sendMessage(from, { text: resultadoOCR.resumen })
 
       if (!resultadoOCR.valido) {
@@ -212,30 +279,32 @@ export async function startBot() {
         return
       }
 
-      const fakeCtx = { from, body: '', pushName: name }
+      await saveConversationToMongo(from, {
+        ...(userMemory || {}),
+        esperandoComprobante: false,
+        ultimaIntencion: 'delivery'
+      })
 
-      if (typeof (deliveryFlow as any)?.__run === 'function') {
-        await (deliveryFlow as any).__run(fakeCtx, {
+      await runDeliveryFlowManualmente(
+        { from, body: '', pushName: name },
+        {
           flowDynamic: async (msg: string | string[]) => {
             void sock.sendMessage(from, { text: Array.isArray(msg) ? msg.join('\n\n') : msg })
           },
           gotoFlow: async () => {},
           state: {
-            getMyState: async () => ({ ...userMemory!, esperandoComprobante: false }),
-            update: async () => {
-              await saveConversationToMongo(from, {
-                ...userMemory!,
-                esperandoComprobante: false
-              })
+            getMyState: async () => userMemory!,
+            update: async (d: Partial<UserMemory>) => {
+              Object.assign(userMemory!, d)
+              await saveConversationToMongo(from, userMemory!)
             },
             clear: async () => {}
           },
           fallBack: async () => {
             void sock.sendMessage(from, { text: 'No entendí tu mensaje, ¿podés repetirlo?' })
           }
-        })
-      }
-
+        }
+      )
       return
     }
 
@@ -252,6 +321,7 @@ export async function startBot() {
       'donde estan ubicados', 'donde queda la tienda', 'como llegar', 'mapa', 'punto de venta'
     ]
 
+    
     if (keywordsUbicacion.some(k => normalized.includes(k))) {
       const { direccion, telefono, correo, ubicacionURL } = empresaConfig.contacto
       void sock.sendMessage(from, {
@@ -260,7 +330,24 @@ export async function startBot() {
       return
     }
 
-    const intentHandled = await handleIntentRouter(text, sock, from, msg)
+const regexPago = /((metodos?|formas?) de pagos?|como (puedo )?pagar|aceptan|quiero pagar|puedo pagar con|cu[aá]les son los m[ée]todos? de pagos?)/i
+
+if (regexPago.test(normalized)) {
+  const metodos = Object.keys(empresaConfig.metodosPago)
+    .map((metodo: string) =>
+      `✅ ${metodo
+        .replace(/([A-Z])/g, ' $1') // separa palabras en camelCase
+        .replace(/^./, l => l.toUpperCase())}` // primera letra en mayúscula
+    )
+    .join('\n')
+
+  void sock.sendMessage(from, {
+    text: `💳 Aceptamos estos métodos de pago:\n\n${metodos}\n\nCuando elijas uno, te enviaré los datos para completar tu pago.`
+  })
+  return
+}
+
+  const intentHandled = await handleIntentRouter(text, sock, from, msg)
     if (intentHandled) return
 
     const emotion: Emotion = analyzeEmotion(text)

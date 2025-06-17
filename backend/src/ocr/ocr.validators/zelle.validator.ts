@@ -3,7 +3,7 @@ import { empresaConfig } from '../../config/empresaConfig'
 export function validateZelle(ocrText: string, montoEsperado: number) {
   const texto = ocrText.toLowerCase()
 
-  // ❌ Rechazo explícito por transacción fallida
+  // ❌ Filtro por error
   if (
     texto.includes('payment failed') ||
     texto.includes('transaction failed') ||
@@ -22,34 +22,40 @@ export function validateZelle(ocrText: string, montoEsperado: number) {
     }
   }
 
-  // 📧 Correo electrónico
+  // 📧 Correo
   const correoRegex = /[\w.-]+@[\w.-]+\.\w+/i
   const correoMatch = ocrText.match(correoRegex)
   const correoDetectado = correoMatch?.[0] || 'No detectado'
 
-  // 🧍 Titular (por “inscrito como”)
+  // 👤 Titular receptor
   const nombreRegex = /inscrito como\s+([A-Z\s]+)/i
   const nombreMatch = ocrText.match(nombreRegex)
   const receptorDetectado = nombreMatch?.[1]?.trim() || 'No detectado'
 
   // 💰 Monto en USD
-  const montoRegex = /\$\s?([\d.,]{1,15})/
+  const montoRegex = /\$\s?([\d.,]{1,10})/
   const montoMatch = ocrText.match(montoRegex)
   const montoDetectado = montoMatch
-    ? parseFloat(montoMatch[1].replace(/\./g, '').replace(',', '.'))
+    ? parseFloat(montoMatch[1].replace(/,/g, '').replace(/\./g, '.'))
     : undefined
 
-  // 📅 Fecha (formato inglés o numérico)
-  const fechaRegex = /\b(?:\d{1,2}\/\d{1,2}\/\d{4}|[a-z]{3,9} \d{1,2},? \d{4})\b/i
+  // 📅 Fecha
+  const fechaRegex = /\b(?:[a-z]{3,9} \d{1,2},? \d{4}|\d{1,2}\/\d{1,2}\/\d{4})\b/i
   const fechaMatch = ocrText.match(fechaRegex)
   const fechaDetectada = fechaMatch?.[0] || 'No detectada'
 
-  // 🔢 Referencia: alfanumérica de 8 a 16 caracteres
-  const referenciaRegex = /\b([A-Z0-9]{8,16})\b/
-  const referenciaMatch = ocrText.match(referenciaRegex)
-  const referenciaDetectada = referenciaMatch?.[1] || 'No detectada'
+  // 🔢 Referencia: mejora para detectar cuando aparece "número de <código>" con "confirmación" después
+  let referenciaDetectada = 'No detectada'
+  const referenciaBloque = ocrText.match(/n[uú]mero de\s+([A-Z0-9]{6,20})/i)
+  if (referenciaBloque) {
+    const pos = ocrText.indexOf(referenciaBloque[0])
+    const after = ocrText.slice(pos, pos + 100).toLowerCase()
+    if (after.includes('confirmación')) {
+      referenciaDetectada = referenciaBloque[1]
+    }
+  }
 
-  // ✅ Validaciones cruzadas
+  // 📌 Validaciones cruzadas
   const correoEsperado = empresaConfig.metodosPago.zelle.correo.toLowerCase().trim()
   const receptorEsperado = empresaConfig.metodosPago.zelle.titular?.toLowerCase().trim()
 
@@ -76,6 +82,6 @@ export function validateZelle(ocrText: string, montoEsperado: number) {
     referenciaDetectada,
     telefonoDetectado: undefined,
     titularDetectado: receptorDetectado,
-    resumen: '' // Se genera desde la función principal
+    resumen: '' // Se genera desde el flujo principal
   }
 }

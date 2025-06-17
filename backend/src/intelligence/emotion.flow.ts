@@ -2,13 +2,20 @@
 
 import { OpenAI } from 'openai';
 import dotenv from 'dotenv';
-import { empresaConfig } from '../config/empresaConfig';  // Corregido para la ruta correcta
+import { empresaConfig } from '../config/empresaConfig';
 
 dotenv.config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-export type EmotionType = 'positivo' | 'neutral' | 'negativo' | 'frustración' | 'decepción' | 'tristeza' | 'alegría';
+export type EmotionType =
+  | 'positivo'
+  | 'neutral'
+  | 'negativo'
+  | 'frustración'
+  | 'decepción'
+  | 'tristeza'
+  | 'alegría';
 
 /**
  * Clasifica el tono emocional de un mensaje usando OpenAI.
@@ -39,6 +46,31 @@ Mensaje: "${text}"
 
   const emotion = completion.choices[0].message.content?.toLowerCase().trim() as EmotionType;
 
-  // Retornamos el tipo de emoción de acuerdo con la clasificación realizada
-  return ['positivo', 'neutral', 'negativo', 'frustración', 'decepción', 'tristeza', 'alegría'].includes(emotion) ? emotion : 'neutral';
+  return [
+    'positivo',
+    'neutral',
+    'negativo',
+    'frustración',
+    'decepción',
+    'tristeza',
+    'alegría'
+  ].includes(emotion)
+    ? emotion
+    : 'neutral';
+}
+
+/**
+ * Opcional: función para generar respuestas proactivas basadas en emociones detectadas.
+ */
+export function respuestaEmocionalProactiva(emocion: EmotionType): string | null {
+  switch (emocion) {
+    case 'tristeza':
+      return '💙 Lamentamos que te sientas así. ¿Hay algo que pueda hacer para ayudarte mejor?';
+    case 'frustración':
+      return '😓 Siento que estés teniendo dificultades. Estoy aquí para ayudarte en lo que necesites.';
+    case 'decepción':
+      return '🙏 Lamentamos no haber cumplido tus expectativas. ¿Qué podemos mejorar para ti?';
+    default:
+      return null;
+  }
 }

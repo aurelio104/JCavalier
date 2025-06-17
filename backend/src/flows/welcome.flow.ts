@@ -20,14 +20,28 @@ function extractName(msg: proto.IWebMessageInfo): string {
     msg.pushName ||
     msg.key.participant?.split('@')[0] ||
     msg.key.remoteJid?.split('@')[0] ||
-    'amigo'  // Valor por defecto si no se puede extraer el nombre
+    'amigo'
   )
 }
 
-// Función para generar el mensaje de bienvenida
-function generateWelcomeMessage(name: string, greeting: string, isNew: boolean): string {
+// Función auxiliar para personalizar el mensaje según la emoción
+function getEmocionExtra(emotion: Emotion): string {
+  switch (emotion) {
+    case 'sad':
+      return 'Si necesitás algo, estoy aquí para ayudarte con cariño. 💛'
+    case 'frustrated':
+      return 'No te preocupes, te voy a ayudar paso a paso. 💪'
+    default:
+      return 'Contá conmigo para lo que necesités. ✨'
+  }
+}
+
+// Función para generar el mensaje de bienvenida con emoción
+function generateWelcomeMessage(name: string, greeting: string, isNew: boolean, emotion: Emotion): string {
+  const emocionExtra = getEmocionExtra(emotion)
+
   const newUserMessages = [
-    `¡Hola ${name}, ${greeting}! 🌟 Bienvenido a ${empresaConfig.nombre}. Estoy aquí para ayudarte con lo que necesites. Pregúntame con confianza.`,
+    `¡Hola ${name}, ${greeting}! 🌟 Bienvenido a ${empresaConfig.nombre}. ${emocionExtra}`,
     `¡Hola ${name}! ${greeting} y bienvenido a ${empresaConfig.nombre}. Si estás buscando algo especial, llegaste al lugar indicado. 🖤`,
     `¡Qué gusto saludarte, ${name}! ${greeting} desde ${empresaConfig.nombre}. Cuéntame qué estás buscando y comenzamos este viaje de estilo.`
   ]
@@ -49,32 +63,34 @@ export async function handleWelcome(
   msg: proto.IWebMessageInfo
 ): Promise<boolean> {
   const normalized = text.toLowerCase().trim()
-  const intent: BotIntent = detectIntent(normalized)
 
-  // Si no es un saludo, retornamos false para que el flujo continúe con otro manejador
-  if (intent !== 'greeting') return false
+  // Saludos mixtos (Spanglish o emojis)
+  const greetingWords = ['hola', 'buenas', 'hello', 'hi', 'hey', '👋', '😊', '🤗']
+  const isGreetingLike = greetingWords.some(g => normalized.includes(g))
+
+  const intent: BotIntent = detectIntent(normalized)
+  if (intent !== 'greeting' && !isGreetingLike) return false
 
   const user = await getUser(from)
   const now = Date.now()
-  const name = extractName(msg) // Extraemos el nombre del usuario
-  const greeting = getGreeting() // Aquí llamamos a la función para obtener el saludo dependiendo de la hora.
+  const name = extractName(msg)
+  const greeting = getGreeting()
   const isGroup = !!msg.key.participant
-  const isNew = !user // Verificamos si el usuario es nuevo o recurrente
+  const isNew = !user
+  const emotion: Emotion = analyzeEmotion(normalized)
 
-  // 👥 Manejo de grupos
   if (isGroup) {
     await sock.sendMessage(from, {
-      text: `¡Hola grupo! 👥 Soy el asistente de ${empresaConfig.nombre}. Escríbanme en privado si quieren ver el catálogo, productos o recibir recomendaciones personalizadas.\n\nTambién pueden explorar: ${empresaConfig.enlaces.catalogo}`
+      text: `¡Hola grupo! 👥 Soy el asistente de ${empresaConfig.nombre}. Escríbanme en privado si quieren ver el catálogo, productos o recibir recomendaciones personalizadas.
+
+También pueden explorar: ${empresaConfig.enlaces.catalogo}`
     })
     return true
   }
 
-  // 👋 Enviar saludo emocional
-  const welcomeMessage = generateWelcomeMessage(name, greeting, isNew)
+  const welcomeMessage = generateWelcomeMessage(name, greeting, isNew, emotion)
   await sock.sendMessage(from, { text: welcomeMessage })
 
-  // 🧠 Registro en memoria del usuario
-  const emotion: Emotion = analyzeEmotion(normalized)
   const historyEntry: UserHistoryEntry = {
     timestamp: now,
     message: text,
@@ -93,7 +109,7 @@ export async function handleWelcome(
     history: [...(user?.history || []), historyEntry],
     emotionSummary: emotion,
     needsHuman: false,
-    ultimaIntencion: intent
+    ultimaIntencion: 'greeting' as BotIntent
   }
 
   await saveUser(updatedUser)

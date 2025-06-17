@@ -1,103 +1,101 @@
 // ✅ src/flows/ecommerce.flow.ts
 
 import { addKeyword, FlowFnProps } from '@bot-whatsapp/bot'
-import { empresaConfig } from '../config/empresaConfig'  // Importamos la configuración de la empresa
+import { empresaConfig } from '../config/empresaConfig'
 import { detectIntent, analyzeEmotion } from '@intelligence/intent.engine'
 import { saveConversationToMongo } from '@memory/memory.mongo'
 import { paymentFlow } from './payment.flow'
-import { contienePedidoDesdeWeb, parseOrderMessage, DetectedProduct } from '@intelligence/order.detector'
+import {
+  contienePedidoDesdeWeb,
+  parseOrderMessage,
+  DetectedProduct
+} from '@intelligence/order.detector'
 import { Emotion, BotIntent, UserMemory } from '@schemas/UserMemory'
 
-/**
- * 🧠 Este flujo maneja todo lo referente al catálogo y pedidos.
- * Se activa tanto para consultas generales como para procesar pedidos estructurados.
- */
-export const ecommerceFlow = addKeyword('welcome')  // Reemplazamos por 'welcome' en lugar de EVENTS.WELCOME
-
-  // Acción que maneja todas las consultas iniciales sobre el catálogo
-  .addAction(async (ctx: FlowFnProps['ctx'], { flowDynamic, state, gotoFlow }: Omit<FlowFnProps, 'ctx'>) => { // Asegúrate de que gotoFlow esté disponible aquí
+export const ecommerceFlow = addKeyword('welcome')
+  .addAction(async (ctx: FlowFnProps['ctx'], { flowDynamic, state, gotoFlow }) => {
     const { body: text, pushName } = ctx
     const normalizedText = text.toLowerCase().trim()
 
     const user = await state.getMyState()
-
-    // Detectamos la intención del mensaje
     const intent: BotIntent = detectIntent(normalizedText)
-    
-    // Manejo de consulta sobre catálogo
+    const emotion: Emotion = analyzeEmotion(normalizedText)
+
     if (intent === 'catalog') {
       await flowDynamic([
         `🖤 ¡Bienvenido a *${empresaConfig.nombre}*!`,
         '✨ Aquí podés ver nuestra colección completa:',
         `🌐 ${empresaConfig.enlaces.catalogo}`,
-        'Si estás buscando algo específico, cuéntame qué te gustaría ver y con gusto te ayudo. 😉'
+        'Si estás buscando algo específico, contame qué te gustaría ver y con gusto te ayudo. 😉'
       ])
       return
     }
 
-    // Manejo de un mensaje sobre precios o productos específicos
     if (intent === 'price' || intent === 'order') {
-      // Si el mensaje contiene una solicitud de productos
       if (contienePedidoDesdeWeb(normalizedText)) {
         const resultado = parseOrderMessage(normalizedText)
 
         if (!resultado.esPedidoValido) {
           await flowDynamic([
-            '⚠️ No pude interpretar correctamente tu pedido.\n¿Podrías reenviarlo o escribirlo nuevamente, por favor? 🙏'
+            '⚠️ No pude interpretar correctamente tu pedido. ¿Podés reenviarlo o escribirlo nuevamente, por favor? 🙏'
           ])
           return
         }
 
-        // Confirmación del pedido
-        const resumen = resultado.productos
-          .map(
-            (p: DetectedProduct, i: number) =>
-              `🛍️ Producto ${i + 1}:\n•⁠ Colección: ${p.coleccion}\n•⁠ Nombre: ${p.nombre}\n•⁠ Talla: ${p.talla}\n•⁠ Color: ${p.color}\n•⁠ Precio: $${p.precio}`
-          )
-          .join('\n\n')
+        const resumen = resultado.productos.map((p: DetectedProduct, i: number) =>
+          `🛍️ Producto ${i + 1}:
+•⁠ Colección: ${p.coleccion}
+•⁠ Nombre: ${p.nombre}
+•⁠ Talla: ${p.talla}
+•⁠ Color: ${p.color}
+•⁠ Precio: $${p.precio}`
+        ).join('\n\n')
 
         const total = resultado.productos.reduce((sum, p) => sum + parseFloat(p.precio), 0)
 
-        // Guardamos el estado del usuario y el pedido
         await saveConversationToMongo(ctx.from, {
           name: pushName || 'cliente',
           productos: resultado.productos.map((p) => p.nombre),
           total: total.toFixed(2),
           ultimaIntencion: 'order',
-          fechaUltimaCompra: Date.now()
+          fechaUltimaCompra: Date.now(),
+          needsHuman: false,
+          emotionSummary: emotion
         } as Partial<UserMemory>)
 
         await flowDynamic([
-          `✨ Perfecto, ${pushName || 'cliente'}, ya tengo tu pedido registrado. Aquí está el resumen completo:\n\n${resumen}\n\n💰 *Total a pagar: $${total.toFixed(2)}*`,
-          '¿Cómo prefieres realizar el pago?',
+          `✨ ¡Hermosa elección, ${pushName || 'cliente'}! Aquí tenés el resumen de tu pedido:
+
+${resumen}
+
+💰 *Total a pagar: $${total.toFixed(2)}*`,
+          '¿Cómo preferís realizar el pago?',
           '1️⃣ *Pago móvil*',
           '2️⃣ *Transferencia bancaria*',
           '3️⃣ *Zelle*',
           '4️⃣ *Binance*',
           '5️⃣ *Efectivo* (al recibir el producto)'
         ])
-        
-        // Redirigimos a la etapa de pago
+
         await flowDynamic('🛒 Dirigiéndote al pago...')
-        return await gotoFlow(paymentFlow)  // Aquí, gotoFlow está disponible a través de las herramientas de la acción
+        return await gotoFlow(paymentFlow)
       }
 
-      // Si no es un pedido válido, pedimos detalles
       await flowDynamic([
-        '⚠️ No pude interpretar correctamente tu mensaje. ¿Podrías confirmar tu pedido o enviarlo de nuevo en un formato claro? 🙏'
+        '📝 Para ayudarte mejor, podés escribir tu pedido así:',
+        'Ejemplo: "Colección: Sun Set\nProducto: Camisa\nTalla: M\nColor: Negro\nPrecio: 25"',
+        'O también podés contarme qué estás buscando: estilo, color, talla… ¡y lo busco por vos! 🕵️‍♀️'
       ])
       return
     }
 
-    // Si el mensaje no contiene un pedido estructurado o reconocible
     await flowDynamic([
-      `👋 Estoy aquí para ayudarte con cualquier consulta sobre nuestro catálogo o productos.`,
-      'Si estás buscando algo específico, cuéntame qué te gustaría ver y con gusto te ayudo. 😉'
+      '👋 Estoy aquí para ayudarte con cualquier consulta sobre nuestro catálogo o productos.',
+      'Si estás buscando algo específico, contame qué te gustaría ver y con gusto te ayudo. 😉'
     ])
   })
 
-  // Acción que maneja cuando el usuario confirma el pedido
-  .addAction(async (ctx: FlowFnProps['ctx'], { flowDynamic, state, gotoFlow }: Omit<FlowFnProps, 'ctx'>) => {
+  .addAction(async (ctx: FlowFnProps['ctx'], { flowDynamic, state, gotoFlow }) => {
     const user = await state.getMyState()
     if (user?.ultimaIntencion === 'order') {
       await flowDynamic([
@@ -108,6 +106,6 @@ export const ecommerceFlow = addKeyword('welcome')  // Reemplazamos por 'welcome
     }
 
     await flowDynamic([
-      '⚠️ No pude entender correctamente tu pedido. Por favor, intenta nuevamente o contacta a nuestro equipo de soporte si necesitas ayuda.'
+      '⚠️ No pude entender correctamente tu pedido. Por favor, intentá nuevamente o escribí "quiero ayuda" para asistencia personalizada.'
     ])
   })

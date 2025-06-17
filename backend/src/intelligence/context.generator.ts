@@ -1,43 +1,61 @@
-// ✅ src/intelligence/context.generator.ts
-
 import { getUser } from '@memory/memory.mongo';
-import { UserMemory, UserHistoryEntry } from '@schemas/UserMemory';
+import { UserHistoryEntry } from '@schemas/UserMemory';
 import { empresaConfig } from '../config/empresaConfig';
-import { detectLanguage } from '../utils/lang'; // Importamos la función para detectar el idioma
+import { detectLanguage } from '../utils/lang';
 
 /**
- * Genera el contexto del usuario, incluyendo su historial y preferencias
+ * Genera el contexto detallado del usuario para respuestas más humanas.
  */
 export async function buildUserContext(userId: string): Promise<string> {
   const user = await getUser(userId);
 
   if (!user) return 'No se encontró información del usuario.';
 
-  // Construcción del historial reciente
+  // Historial de interacciones recientes
   const recentHistory = user.history
     .slice(-5)
     .map((h: UserHistoryEntry) => `• (${h.intent}) ${h.message}`)
     .join('\n') || 'Sin mensajes recientes.';
 
-  // Formateo de la última conexión
+  // Última conexión formateada
   const lastSeen = user.lastSeen
-    ? new Date(user.lastSeen).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' })
+    ? new Date(user.lastSeen).toLocaleString('es-VE', {
+        dateStyle: 'short',
+        timeStyle: 'short'
+      })
     : 'Desconocida';
 
-  // Recopilación de etiquetas y preferencias estilísticas
+  // Tags e intereses
   const tags = user.tags?.slice(-3).join(', ') || 'No definidos';
   const styles = user.preferredStyles?.join(', ') || 'No registradas';
 
-  // Detectar el idioma de la última interacción del usuario para manejar la conversación correctamente
+  // Idioma detectado por último mensaje
   const lastMessage = user.lastMessage || '';
-  const userLanguage = detectLanguage(lastMessage); // Detecta el idioma del último mensaje
+  const userLanguage = detectLanguage(lastMessage);
 
-  // Generación del contexto completo del usuario, con información de la empresa y preferencias de idioma
+  // NUEVOS CAMPOS AVANZADOS
+  const lastViewed = user.lastViewedProduct || 'No registrado';
+  const lastOrder = user.lastOrder || 'Sin pedidos aún';
+  const location = user.location || 'No especificada';
+  const frequency = user.frequency || 'ocasional';
+  const profileType = user.profileType || 'indefinido';
+
+  // FUTUROS CAMPOS (dejar comentado si luego agregás más features)
+  // const device = user.deviceType || 'Desconocido';
+  // const preferredPayment = user.paymentPreference || 'No definido';
+
   return `
 👤 Nombre: ${user.name}
 💬 Último mensaje: "${user.lastMessage}"
 🕒 Última conexión: ${lastSeen}
 🧠 Resumen emocional: ${user.emotionSummary}
+
+📦 Último producto visto: ${lastViewed}
+🛒 Último pedido: ${lastOrder}
+📍 Zona habitual: ${location}
+🔁 Frecuencia de interacción: ${frequency}
+📊 Nivel de compra: ${profileType}
+
 🏷️ Temas recientes: ${tags}
 🎨 Preferencias estilísticas: ${styles}
 
@@ -49,6 +67,5 @@ ${recentHistory}
 📞 Contacto: ${empresaConfig.contacto.telefono} / ${empresaConfig.contacto.correo}
 
 🌐 Idioma preferido: ${userLanguage === 'es' ? 'Español Latino' : 'Inglés'}
-
-`.trim(); // Retorna el contexto completo
+`.trim();
 }

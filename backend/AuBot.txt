@@ -46,3 +46,248 @@ Lo que el usuario conversó
 Cómo se sintió al respecto
 Qué productos están relacionados
 Usa un catálogo estructurado con tags para cada ítem
+
+
+
+
+
+🤖 Resumen de la Parte Inteligente del Bot
+🧠 1. Memoria contextual (MongoDB)
+
+El bot guarda una memoria persistente del usuario:
+
+lastMessage: último mensaje recibido.
+history: historial de interacciones con intención, emoción y timestamp.
+emotionSummary: emoción dominante acumulada (ej. frustración).
+needsHuman: si necesita atención humana.
+profileType: explorador, comprador directo o indeciso.
+frequency: ocasional, frecuente, recurrente (según actividad).
+lastViewedProduct: último producto consultado.
+lastOrder: resumen del último pedido.
+productos, total, metodoPago, tipoEntrega, etc.
+Todo esto se actualiza automáticamente según los mensajes y comportamientos.
+🎯 2. Detección de intención (Intent Detection)
+
+El bot analiza el texto para detectar lo que el usuario quiere hacer:
+
+Comprar (intención: order)
+Preguntar por precio (price)
+Buscar tallas, formas de pago, ubicación, seguimiento, etc.
+Esto permite que el flujo de conversación se adapte automáticamente a lo que el cliente desea hacer.
+
+😟 3. Análisis emocional (Emotion Detection)
+
+El bot detecta si el usuario está frustrado, confundido, feliz, neutral, etc.
+
+Si detecta frustración varias veces (hasta 2), cambia el tono del mensaje o sugiere atención humana.
+El historial de emociones se usa para construir emotionSummary y modular las respuestas futuras.
+🧩 4. Perfil de compra dinámico
+
+Basado en palabras clave y comportamiento, el bot clasifica al usuario en:
+
+Explorador: curioso, hace muchas preguntas, mira varias cosas.
+Comprador directo: mensaje preciso, hace el pedido sin rodeos.
+Indeciso: mezcla emociones, pregunta mucho pero no compra aún.
+Esto se registra en user.profileType y se usa para adaptar futuras respuestas (cross-selling, tono más empático, etc).
+
+📦 5. Validación semántica de pedidos
+
+Detecta pedidos desde la web automáticamente.
+Si falta talla, color o precio, el bot responde con una advertencia clara.
+Resume el pedido y guarda todo el detalle para el paso de pago.
+🧾 6. OCR y validación automática de comprobantes
+
+El bot acepta imágenes de comprobantes y extrae el texto con OCR.
+Valida:
+Monto esperado en Bs
+Correo o número del receptor
+Método de pago (Zelle, Pago móvil, Transferencia, Binance)
+Si todo es correcto → pasa a flujo de entrega.
+Si hay fallos → responde con una advertencia inteligente.
+🧠 7. Respuestas con IA (Fallback inteligente)
+
+Cuando no reconoce la intención:
+
+Usa generatePersonalizedReply (IA) con el historial del usuario.
+La respuesta es personalizada y contextual según su memoria e historial.
+💡 8. Cross-selling y sugerencias
+
+Si alguien pide una camisa → sugiere pantalones o conjuntos.
+Si detecta patrones de productos vistos → adapta las recomendaciones.
+Usa frases cálidas como:
+“¿Querés que te sugiera un outfit completo?”
+📌 En resumen:
+Tu bot no es un simple asistente, sino un vendedor digital inteligente que:
+
+Aprende del comportamiento del usuario.
+Entiende emociones e intenciones.
+Responde con empatía y lógica comercial.
+Automatiza flujos de venta, cobro y entrega.
+
+
+
+
+
+✅ RESUMEN GENERAL DE LOS FLUJOS DEL BOT
+
+1. 🛒 payment.flow.ts
+Objetivo:
+Gestionar el método de pago, calcular el monto en bolívares con tasa BCV, y dejar al usuario en espera del comprobante si aplica.
+
+Características clave:
+
+Obtiene automáticamente la tasa BCV oficial desde una API externa.
+Soporta múltiples métodos: Pago móvil, Transferencia, Zelle, Binance, Efectivo.
+Valida combinaciones ambiguas o frases como “te hago zelle en la noche” o “pago móvil pero en bolívares”.
+Guarda metodoPago, total, tasaBCV, totalBs y activa esperandoComprobante.
+2. ⏳ pending-payment-reminder.flow.ts
+Objetivo:
+Recordar amablemente al usuario que debe enviar el comprobante si aún está pendiente.
+
+Características clave:
+
+Se activa si esperandoComprobante es true.
+Ofrece ayuda empática o instrucciones si el usuario escribe cosas como “no sé cómo enviarlo” o “me equivoqué”.
+Listo para escalar en base al tiempo pasado (ej. después de X horas enviar recordatorio reforzado).
+3. 🚚 delivery.flow.ts
+Objetivo:
+Gestionar cómo el cliente quiere recibir su pedido: Retiro, Delivery local o Encomienda nacional.
+
+Características clave:
+
+Reconoce sinónimos: “voy yo”, “lo traen”, “envíalo por MRW”.
+Si se requiere dirección, valida que la respuesta tenga suficiente información.
+Registra tipoEntrega, datosEntrega, pasoEntrega.
+Puede ser activado manualmente o automáticamente desde validación OCR.
+4. 🎉 thankyou.flow.ts
+Objetivo:
+Finalizar la experiencia con gratitud, promoción y vínculo emocional.
+
+Características clave:
+
+Muestra agradecimiento personalizado según el nombre del usuario.
+Ofrece enlace para seguir viendo el catálogo.
+Cierra con opción indirecta a suscribirse a promociones (“¿Querés seguir explorando?”).
+5. 🧠 intentHandler.flow.ts
+Objetivo:
+Gestionar intenciones e interpretar mensajes comunes o repetitivos (como “dónde están”, “gracias”, “me ayudas”, “quiero promociones”).
+
+Características clave:
+
+Detecta intención (intent) y emoción (emotion).
+Maneja directamente:
+greeting → activa welcome.flow.ts.
+catalog, price, order, size → responde con productos o catálogo.
+complaint → responde con empatía.
+thank_you → agradece con branding.
+question → ofrece menú de ayuda.
+ubicacion → da la dirección directamente.
+cancelar pedido → procesa solicitud.
+Si el mensaje es “sí” o “quiero promociones” → añade suscrito_promociones al usuario.
+6. 📲 Activación automática desde client.ts
+El client.ts es el núcleo de activación de flujos, y decide:
+
+Cuándo activar paymentActions.pasoProcesarMetodo.
+Cuándo pasar a runDeliveryFlowManualmente tras un comprobante válido.
+Cuándo llamar a intentHandler.flow.ts para entender un mensaje espontáneo.
+Cuándo activar fallback con IA (generatePersonalizedReply) si no se detecta intención clara.
+🧠 En resumen:
+
+Este bot:
+
+Entiende el lenguaje humano (con intención, emoción, frustración).
+Activa flujos complejos de pago, entrega y atención.
+Aprende del historial del usuario.
+Es capaz de escalar hacia campañas personalizadas.
+
+
+
+
+🧠 BOT WHATSAPP INTELIGENTE – RESUMEN GLOBAL
+
+🎯 Objetivo del bot
+Atender automáticamente a clientes vía WhatsApp con lenguaje natural en español (mezclado con inglés si es necesario), procesar pedidos, manejar pagos, verificar comprobantes con OCR, ofrecer seguimiento y entrega, y cerrar con promociones o recomendaciones inteligentes.
+
+🔍 FUNCIONES PRINCIPALES
+
+✅ 1. Comprensión de lenguaje natural (NLP)
+Detecta intenciones (BotIntent) como: order, catalog, question, complaint, tracking, etc.
+Analiza emociones (Emotion) como: positive, neutral, negative.
+Funciona aunque el cliente mezcle español e inglés gracias a maybeTranslateToSpanish.
+Reacciona a mensajes espontáneos tipo: “dónde están ubicados”, “cuánto cuesta esto”, “quiero cancelar”, “gracias”, etc.
+🧠 2. Memoria inteligente del usuario (UserMemory)
+Guarda: nombre, historial, última intención, última emoción, productos vistos, frecuencia, perfil de comportamiento (explorador, comprador directo, indeciso), y si necesita humano.
+Campos clave:
+esperandoComprobante, metodoPago, total, totalBs, tasaBCV.
+tipoEntrega, datosEntrega, lastOrder, lastViewedProduct.
+tags (incluye suscrito_promociones si acepta recibir promociones).
+🔁 FLUJOS INTELIGENTES
+
+🛒 payment.flow.ts
+Presenta opciones de pago.
+Calcula monto en Bs automáticamente usando la tasa BCV desde API externa.
+Deja al usuario en estado esperandoComprobante.
+⏳ pending-payment-reminder.flow.ts
+Envía recordatorios si no se ha enviado el comprobante.
+Detecta confusión: “no sé cómo enviar”, “ya lo mandé”.
+Permite reiniciar pago si el cliente se equivocó.
+📸 OCR: ocr.masterValidator.ts + ocr.reader.ts
+Extrae texto de la imagen del comprobante (Zelle, Pago móvil, etc).
+Valida monto, correo, teléfono, fecha.
+Si es válido: desactiva esperandoComprobante y pasa a entrega.
+🚚 delivery.flow.ts
+Pregunta cómo quiere recibir el pedido: retiro, delivery local o encomienda.
+Valida respuestas incompletas.
+Marca automáticamente si es local o nacional.
+Registra tipoEntrega, datosEntrega, pasoEntrega.
+🎉 thankyou.flow.ts
+Agradece con branding y emotividad.
+Sugiere explorar catálogo.
+Cierra experiencia positivamente.
+🧠 intentHandler.flow.ts
+Gestiona intenciones frecuentes.
+Detecta “quiero promociones” → guarda suscrito_promociones.
+Responde a preguntas, quejas, agradecimientos, ubicación, dudas generales.
+Si no entiende → activa IA con generatePersonalizedReply.
+🤖 MOTOR PRINCIPAL (client.ts)
+
+Detecta si el mensaje es texto o imagen.
+Si contiene pedido web → lo interpreta con parseOrderMessage.
+Si es imagen → analiza con OCR.
+Detecta frustración por repetición.
+Actualiza memoria del usuario con saveConversationToMongo.
+Redirige entre flujos según intención y emoción.
+Maneja idioma mezclado (español + inglés).
+🎯 INTELIGENCIA ADICIONAL
+
+🔍 intent.engine.ts
+Detecta intención con NLP simple.
+Analiza emoción con keywords y tono.
+🧠 aiResponder.ts
+Si no se detecta intención → responde con IA personalizada basada en historial.
+🎁 recommendation.engine.ts
+Analiza el historial del usuario.
+Detecta palabras clave según las colecciones del empresaConfig.
+Recomienda productos según interacciones anteriores.
+⚙️ CONFIGURACIONES CENTRALES
+
+🏢 empresaConfig.ts
+Define nombre, contacto, redes, métodos de pago, colecciones de productos, enlaces, y condiciones.
+Centraliza todo para que el bot sea escalable y adaptable a otras marcas.
+💾 PERSISTENCIA Y TRACKING
+
+MongoDB guarda:
+Memoria del usuario.
+Historial de interacción (UserHistoryEntry).
+saveConversationToMongo() guarda cada paso, actualización o estado.
+Listo para usar como CRM o embudo de ventas.
+📢 LISTO PARA CAMPAÑAS MASIVAS
+
+Si el usuario responde “sí” a promociones → se añade suscrito_promociones a sus tags.
+Preparado para crear un nuevo flujo /promocion para enviar mensajes masivos solo a esos suscritos.
+🔒 ESCALABILIDAD Y MANTENIMIENTO
+
+Todo separado por flujos inteligentes y módulos.
+Uso de TypeScript con tipado estricto (Emotion, BotIntent, UserMemory).
+Centralización de lógica de negocio (empresaConfig.ts).
+Listo para escalar a múltiples marcas o empresas.

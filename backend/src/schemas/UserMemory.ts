@@ -1,5 +1,5 @@
 /** 🧠 Emociones reconocidas */
-export type Emotion = 'positive' | 'neutral' | 'negative'
+export type Emotion = 'positive' | 'neutral' | 'negative' | 'sad' | 'frustrated'
 
 /** 🧠 Intenciones del usuario reconocidas por el bot */
 export type BotIntent =
@@ -15,6 +15,7 @@ export type BotIntent =
   | 'question'
   | 'other'
   | 'unknown'
+  | 'delivery'
 
 /** 🧠 Entrada individual del historial de un usuario */
 export interface UserHistoryEntry {
@@ -43,8 +44,19 @@ export interface UserMemory {
   metodoPago?: string
   tipoEntrega?: string
   datosEntrega?: string
-  preferredStyles?: string[]       // <-- AGREGADO AQUÍ
-  esperandoComprobante?: boolean   // ✅ NUEVO CAMPO
+  preferredStyles?: string[]
+  esperandoComprobante?: boolean
+  tasaBCV?: number
+  totalBs?: number
+  timestampTasaBCV?: number
+  pasoEntrega?: number
+
+  // 🆕 CAMPOS NUEVOS PARA CONTEXTO INTELIGENTE
+  lastViewedProduct?: string           // Último producto visto o consultado
+  lastOrder?: string                   // Último pedido confirmado (formato corto o string libre)
+  location?: string                    // Zona geográfica habitual del cliente
+  frequency?: 'ocasional' | 'frecuente' | 'recurrente' // Frecuencia de interacción
+  profileType?: 'explorador' | 'comprador directo' | 'indeciso' // Perfil de comportamiento comercial
 }
 
 /** 🧠 Versión estricta con todos los campos requeridos */

@@ -1,71 +1,78 @@
 import { empresaConfig } from '../../config/empresaConfig'
 
-export function validatePagoMovil(ocrText: string, montoEsperado: number) {
-  const texto = ocrText.toLowerCase()
+export function validatePagoMovil(ocrText: string, montoEsperadoBs: number) {
+  const texto = ocrText
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
 
-  // ❌ Rechazo explícito por transacción fallida
-  if (/transacci[oó]n\s+fallida/i.test(texto)) {
+  const lineas = texto.split(/\r?\n/).map(l =>
+    l.normalize('NFD').replace(/[̀-\u036f]/g, '').trim().replace(/\s+/g, ' ')
+  )
+
+  // ❌ Verifica si la transacción falló
+  if (/fallida|error|rechazada|no fue posible procesar|no procesado/.test(texto)) {
     return {
       valido: false,
       telefonoDetectado: undefined,
+      bancoDetectado: undefined,
       titularDetectado: undefined,
       correoDetectado: undefined,
       fechaDetectada: undefined,
       montoDetectado: undefined,
       referenciaDetectada: undefined,
-      resumen: '❌ El comprobante indica una transacción fallida. No es válido.'
+      resumen: '❌ El comprobante indica una transacción fallida.'
     }
   }
 
-  // 📱 Teléfono de destino
-  const telefonoRegex = /\b0\d{10}\b/
+  // 📱 Teléfono
+  const telefonoRegex = /destino[^0-9]*(0\d{10})/
   const telefonoMatch = texto.match(telefonoRegex)
-  const telefonoDetectado = telefonoMatch?.[0] || 'No detectado'
+  const telefonoDetectado = telefonoMatch?.[1] ?? 'No detectado'
+  const telefonoEsperado = empresaConfig.metodosPago.pagoMovil.telefono.replace(/[^\d]/g, '')
+  const telefonoValido = telefonoDetectado === telefonoEsperado
 
-  // 🆔 Cédula del receptor
-  const cedulaRegex = /v\d{5,10}/i
-  const cedulaMatch = texto.match(cedulaRegex)
-  const cedulaDetectada = cedulaMatch?.[0].toUpperCase() || 'No detectada'
+  // 🏦 Banco
+  const bancoEsperado = empresaConfig.metodosPago.pagoMovil.banco
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+  const bancoDetectado = lineas.find(linea =>
+    linea.includes(bancoEsperado)
+  ) ?? 'No detectado'
+  const bancoValido = bancoDetectado !== 'No detectado'
 
-  // 🏦 Banco receptor
-  const bancoLine = ocrText.split('\n').find(l => l.toLowerCase().includes('banco receptor'))
-  const bancoDetectado = bancoLine?.split(':')[1]?.trim() || 'No detectado'
+  // 🔢 Referencia
+  const refRegex = /referencia[^0-9]*(\d{6,20})/
+  const refMatch = texto.match(refRegex)
+  const referenciaDetectada = refMatch?.[1] ?? 'No detectado'
 
-  // 🔢 Número de referencia
-  const referenciaRegex = /n[úu]mero de referencia[^\d]*(\d{6,20})/i
-  const referenciaMatch = ocrText.match(referenciaRegex)
-  const referenciaDetectada = referenciaMatch?.[1] || 'No detectada'
-
-  // 🕓 Fecha y hora
-  const fechaRegex = /(\d{2}\/\d{2}\/\d{4})\s+(\d{1,2}:\d{2}(?::\d{2})?\s?(?:am|pm)?)/i
-  const fechaMatch = texto.match(fechaRegex)
+  // 📅 Fecha
+  const fechaRegex = /(\d{2}\/\d{2}\/\d{4})[^\d]*(\d{1,2}:\d{2}(?::\d{2})?\s?(?:am|pm)?)/i
+  const fechaMatch = ocrText.match(fechaRegex)
   const fechaDetectada = fechaMatch
     ? `${fechaMatch[1]} ${fechaMatch[2].toUpperCase()}`
     : 'No detectada'
 
-  // 💰 Monto (flexible Bs)
-  const montoRegex = /(?:bs|bs\.?)\s*([\d.,]{3,15})/i
+  // 💰 Monto
+  const montoRegex = /bs[^0-9]*([\d.,]+)/i
   const montoMatch = texto.match(montoRegex)
   const montoDetectado = montoMatch
     ? parseFloat(montoMatch[1].replace(/\./g, '').replace(',', '.'))
     : undefined
+  const montoValido = typeof montoDetectado === 'number' &&
+    typeof montoEsperadoBs === 'number' &&
+    montoEsperadoBs > 0 &&
+    Math.abs(montoDetectado - montoEsperadoBs) < 1
 
-  // 📌 Validaciones contra empresaConfig
-  const telefonoEsperado = empresaConfig.metodosPago.pagoMovil.telefono.replace(/[^\d]/g, '')
-  const cedulaEsperada = empresaConfig.metodosPago.pagoMovil.cedula.replace(/[^\d]/g, '')
-  const bancoEsperado = empresaConfig.metodosPago.pagoMovil.banco.toLowerCase()
-
-  const telefonoValido = telefonoDetectado === telefonoEsperado
-  const cedulaValida = cedulaDetectada.replace(/[^\d]/g, '') === cedulaEsperada
-  const bancoValido = bancoDetectado.toLowerCase().includes(bancoEsperado)
-  const montoValido = typeof montoDetectado === 'number' && Math.abs(montoDetectado - montoEsperado) < 1
-
-  const valido = telefonoValido && cedulaValida && bancoValido && montoValido
+  const valido = telefonoValido && bancoValido && montoValido
+  console.log(`[1] ✅ Resultado final válido: ${valido}`)
 
   return {
     valido,
     telefonoDetectado,
-    titularDetectado: `CI ${cedulaDetectada}`,
+    bancoDetectado: bancoValido ? empresaConfig.metodosPago.pagoMovil.banco : 'No detectado',
+    titularDetectado: undefined,
     correoDetectado: undefined,
     fechaDetectada,
     montoDetectado,
@@ -73,16 +80,13 @@ export function validatePagoMovil(ocrText: string, montoEsperado: number) {
     resumen: `📲 *Pago Móvil Detectado*
 
 📱 Teléfono: ${telefonoDetectado}
-🆔 Cédula: ${cedulaDetectada}
-🏦 Banco: ${bancoDetectado}
+🏦 Banco: ${bancoValido ? empresaConfig.metodosPago.pagoMovil.banco : 'No detectado'}
 🔢 Referencia: ${referenciaDetectada}
-🕓 Fecha: ${fechaDetectada}
+📅 Fecha: ${fechaDetectada}
 💰 Monto: ${montoDetectado ? `Bs ${montoDetectado.toFixed(2)}` : 'No detectado'}
 
-${
-  valido
-    ? '✅ Comprobante válido. ¡Gracias por tu pago!'
-    : '❌ El comprobante no coincide con los datos esperados.'
-}`
+${valido
+  ? '✅ Comprobante válido. ¡Gracias por tu pago!'
+  : '❌ El comprobante no coincide con los datos esperados.'}`
   }
 }

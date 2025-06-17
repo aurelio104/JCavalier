@@ -3,6 +3,8 @@ import { buildUserContext } from './context.generator'
 import { detectProductByKeywords } from './product.engine'
 import { getCatalogResponse } from './catalog.response'
 import { empresaConfig } from '../config/empresaConfig';
+import { getUser } from '@memory/memory.mongo'
+import { Emotion } from '@schemas/UserMemory'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -13,7 +15,7 @@ const openai = new OpenAI({
  * ⚠️ Esta función debe utilizarse solo como fallback si ningún flujo ha respondido antes.
  */
 export async function generatePersonalizedReply(userId: string, message: string): Promise<string> {
-  const normalized = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const normalized = message.toLowerCase().normalize('NFD').replace(/[̀-\u036f]/g, '')
 
   // Detectar si el mensaje menciona algún producto
   const productDetected = detectProductByKeywords(normalized)
@@ -22,13 +24,31 @@ export async function generatePersonalizedReply(userId: string, message: string)
     return getCatalogResponse(name, message)  // Responder con el catálogo de productos
   }
 
-  // Obtener el contexto del usuario desde la memoria
+  // Obtener contexto completo del usuario
   const context = await buildUserContext(userId)
+  const user = await getUser(userId)
 
-  // Prompt actualizado para que las respuestas sean más personalizadas y en español latino
+  const emotion: Emotion = user?.emotionSummary || 'neutral'
+  const perfil = user?.profileType || 'explorador'
+  const frecuencia = user?.frequency || 'ocasional'
+
+  const tonoFrecuencia = frecuencia === 'recurrente' ? 'como siempre, gracias por volver' : ''
+  const emocionesCriticas: Emotion[] = ['negative'] // en caso de usar clasificación refinada
+
+  const sugerenciaEmpatica = emocionesCriticas.includes(emotion)
+    ? 'Si estás teniendo un mal momento, estoy aquí para ayudarte.'
+    : ''
+
   const prompt = `
-Eres un estilista digital empático de ${empresaConfig.nombre}, una marca de moda disruptiva. 
-Debes responder en *español latino*, usando un tono cálido, directo y conectado emocionalmente con el usuario.
+Eres un estilista digital empático de ${empresaConfig.nombre}, una marca de moda disruptiva.
+
+Tu tono es cálido, directo y adaptado emocionalmente.
+
+• El usuario se siente: *${emotion}*
+• Su perfil es: *${perfil}*
+• Frecuencia de compra: *${frecuencia}*
+
+${tonoFrecuencia} ${sugerenciaEmpatica}
 
 Contexto del usuario:
 ${context}
@@ -36,7 +56,7 @@ ${context}
 Mensaje recibido:
 "${message}"
 
-Tu respuesta (usa un tono cálido, directo y conectado emocionalmente, y asegúrate de que sea adecuada para el contexto y la cultura venezolana, mencionando detalles como el nombre de la empresa y posibles productos o servicios relacionados):`
+Tu respuesta (usa español latino y asegúrate de que sea adecuada para el tono emocional, la frecuencia del usuario y la cultura venezolana. Sé directo, empático y menciona productos o servicios si es útil):`
 
   // Solicitar respuesta a OpenAI
   const completion = await openai.chat.completions.create({
@@ -46,7 +66,6 @@ Tu respuesta (usa un tono cálido, directo y conectado emocionalmente, y asegúr
     max_tokens: 120
   })
 
-  // Si OpenAI no devuelve una respuesta adecuada, usar una respuesta de fallback
   return (
     completion.choices?.[0]?.message?.content?.trim() ||
     `Disculpa, ¿podrías contarme un poco más para ayudarte mejor?`

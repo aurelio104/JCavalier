@@ -54,7 +54,14 @@ export async function saveUser(user: Partial<UserMemoryWithId>): Promise<void> {
     total: '',
     metodoPago: '',
     tipoEntrega: '',
-    datosEntrega: ''
+    datosEntrega: '',
+    lastViewedProduct: user.lastViewedProduct,
+    lastOrder: user.lastOrder,
+    frequency: user.frequency,
+    location: user.location,
+    profileType: ['explorador', 'comprador directo', 'indeciso'].includes(user.profileType || '')
+      ? user.profileType
+      : undefined
   }
 
   await UserMemoryModel.findByIdAndUpdate(safeId, updatePayload, { upsert: true })
@@ -89,7 +96,6 @@ export async function logUserInteraction(
 
   const existing = await UserMemoryModel.findById(safeId).lean()
 
-  // 🏷️ Etiquetado automático por intención
   let intentTag: string | null = null
   switch (intent) {
     case 'price':
@@ -121,7 +127,12 @@ export async function logUserInteraction(
       total: '',
       metodoPago: '',
       tipoEntrega: '',
-      datosEntrega: ''
+      datosEntrega: '',
+      lastViewedProduct: '',
+      lastOrder: '',
+      frequency: 'ocasional',
+      location: '',
+      profileType: undefined
     }
 
     await UserMemoryModel.create(newUser)

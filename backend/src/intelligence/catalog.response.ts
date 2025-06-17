@@ -46,12 +46,23 @@ Incluye camisas ligeras y shorts en colores como azul, gris, beige, rosa y negro
 ${description}`
     : '🖤 Nuestra colección es versátil y con carácter. Camisas, conjuntos, pantalones y más... para que expreses quién eres.'
 
-  return `${saludo}${detalle}
+  const respuestaBase = `${saludo}${detalle}
 
 🛍️ Puedes ver todos nuestros modelos, colores y tallas directamente en el catálogo:
 👉 ${empresaConfig.enlaces.catalogo}
 
 Si tienes un estilo en mente o algo que te gustaría ver, dime y te ayudo a encontrar lo ideal para ti. 😉`
+
+  // Cross-selling
+  if (product === 'camisa') {
+    return `${respuestaBase}
+
+👖 También podrías combinarla con nuestros pantalones beige o negros.
+
+¿Querés que te sugiera un outfit completo? 😉`
+  }
+
+  return respuestaBase
 }
 
 /**

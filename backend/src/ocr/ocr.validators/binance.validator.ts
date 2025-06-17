@@ -3,7 +3,7 @@ import { empresaConfig } from '../../config/empresaConfig'
 export function validateBinance(ocrText: string, montoEsperado: number) {
   const texto = ocrText.toLowerCase()
 
-  // ❌ Rechazo por texto explícito de fallo
+  // ❌ Filtro por fallo
   if (
     texto.includes('fallido') ||
     texto.includes('cancelado') ||
@@ -11,7 +11,7 @@ export function validateBinance(ocrText: string, montoEsperado: number) {
     texto.includes('rechazado')
   ) {
     return {
-      valido: false as boolean,
+      valido: false,
       correoDetectado: 'No detectado',
       montoDetectado: undefined,
       fechaDetectada: undefined,
@@ -22,42 +22,41 @@ export function validateBinance(ocrText: string, montoEsperado: number) {
     }
   }
 
-  // 📧 Correo electrónico
+  // 📧 Correo electrónico detectado
   const correoRegex = /[\w.-]+@[\w.-]+\.\w+/i
   const correoMatch = ocrText.match(correoRegex)
   const correoDetectado = correoMatch?.[0] || 'No detectado'
 
-  // 💰 Monto: "60 USDT" o "60,00 USDT"
-  const montoRegex = /(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)\s*(usdt|busd)/i
+  // 💰 Monto: acepta "60 USDT", "60,00 USDT", "Pagado con 60 USDT", etc.
+  const montoRegex = /(?:pagado con|pagaste)?\s*\$?\s*([\d.,]{1,10})\s*(usdt|busd)?/i
   const montoMatch = ocrText.match(montoRegex)
   const montoDetectado = montoMatch
-    ? parseFloat(montoMatch[1].replace(/\./g, '').replace(',', '.'))
+    ? parseFloat(montoMatch[1].replace(/,/g, '').replace(/\./g, '.'))
     : undefined
 
-  // 📅 Fecha (formato UTC: "2025-05-30 14:56:33")
+  // 📅 Fecha UTC como "2025-05-30 14:56:33"
   const fechaRegex = /\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}/
   const fechaMatch = ocrText.match(fechaRegex)
-  const fechaDetectada = fechaMatch?.[0]
+  const fechaDetectada = fechaMatch?.[0] || 'No detectada'
 
-  // 🔢 ID de orden como referencia
+  // 🔢 Referencia: ID de orden largo (10 a 25 dígitos)
   const referenciaRegex = /\b\d{10,25}\b/
   const referenciaMatch = ocrText.match(referenciaRegex)
   const referenciaDetectada = referenciaMatch?.[0] || 'No detectada'
 
-  // 🏦 Método de pago (opcional)
-  const metodoRegex = /método de pago\s+([a-záéíóúü\s]+)/i
+  // 🏦 Método de pago (por ejemplo: Cuenta de Fondos)
+  const metodoRegex = /m[eé]todo de pago\s*([a-záéíóúü\s]+)/i
   const metodoMatch = ocrText.match(metodoRegex)
-  const metodoDetectado = metodoMatch?.[1]?.trim()
+  const metodoDetectado = metodoMatch?.[1]?.trim() || 'No detectado'
 
-  // ✅ Validaciones
+  // ✅ Validaciones finales
   const correoEsperado = empresaConfig.metodosPago.binance.correo.toLowerCase().trim()
-  const correoValido: boolean = correoDetectado.toLowerCase().trim() === correoEsperado
+  const correoValido = correoDetectado.toLowerCase().trim() === correoEsperado
 
-  const montoValido: boolean =
-    typeof montoDetectado === 'number' &&
+  const montoValido = typeof montoDetectado === 'number' &&
     Math.abs(montoDetectado - montoEsperado) < 1
 
-  const valido: boolean = correoValido && montoValido
+  const valido = correoValido && montoValido
 
   return {
     valido,
@@ -66,7 +65,7 @@ export function validateBinance(ocrText: string, montoEsperado: number) {
     fechaDetectada,
     referenciaDetectada,
     telefonoDetectado: undefined,
-    titularDetectado: metodoDetectado || 'No detectado', // usamos el campo para mostrar el método de pago
-    resumen: '' // generado externamente
+    titularDetectado: metodoDetectado, // usado como método de pago
+    resumen: '' // generado en el flujo principal
   }
 }

@@ -6,7 +6,7 @@ export const empresaConfig = {
 
 // Información de contacto
 contacto: {
-  telefono: '0412-123-4567',
+  telefono: '04121234567',
   correo: 'contacto@jcavalier.com',
   direccion: 'La Coromoto, Calle Mérida Número 5, al lado del Colegio, Unidad Educativa Amelia Linares, Maracay, Edo. Aragua. Venezuela',  // Dirección de la tienda
   ubicacionURL: 'https://maps.app.goo.gl/jjAyxAFZni7XkSDv5'  // Enlace a Google Maps para la ubicación
@@ -15,14 +15,15 @@ contacto: {
 
   // Métodos de pago
   metodosPago: {
-    pagoMovil: {
-      telefono: '0412-896-6414',
-      cedula: '23.000.000',
-      banco: 'Banesco',
-    },
+pagoMovil: {
+  telefono: '04128966414', // 🔧 sin guiones
+  cedula: '23000000',       // 🔧 sin puntos
+  banco: 'Banesco',         // ✅ en formato capitalizado
+},
+
     transferenciaBancaria: {
       banco: 'Banesco',
-      cuenta: '0124 0099 123 121212',
+      cuenta: '01240099123121212',
       titular: 'Jhonny Sanchez',
     },
 zelle: {

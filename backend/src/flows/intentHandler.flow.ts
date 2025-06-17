@@ -1,22 +1,25 @@
 // ✅ src/flows/intentHandler.flow.ts
 
-import { WASocket, proto } from '@whiskeysockets/baileys'
+import { WASocket, proto, downloadMediaMessage } from '@whiskeysockets/baileys'
 import { detectIntent, analyzeEmotion } from '@intelligence/intent.engine'
 import { getUser, saveUser } from '@memory/memory.mongo'
 import { Emotion, BotIntent, UserHistoryEntry } from '@schemas/UserMemory'
 import { handleWelcome } from './welcome.flow'
 import { getCatalogResponse } from '@intelligence/catalog.response'
 import { detectProductByKeywords } from '@intelligence/product.engine'
-import { empresaConfig } from '../config/empresaConfig'; // Importamos la configuración de la empresa
+import { empresaConfig } from '../config/empresaConfig'
+import { transcribirAudio } from '@utils/audio.transcriber'
 
-// Función para buscar productos relacionados con la consulta y devolver precios
 function buscarProductosPorKeywords(keywords: string): string[] {
   const productosRelacionados = Object.entries(empresaConfig.colecciones)
     .filter(([_, product]) => product.keywords.some(keyword => keywords.includes(keyword)))
     .map(([productName, product]) => `${productName} - $${product.price} - Ver más: ${product.link}`)
-  
+
   return productosRelacionados
 }
+
+const removeAccents = (str: string): string =>
+  str.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
 export async function handleIntentRouter(
   text: string,
@@ -24,9 +27,28 @@ export async function handleIntentRouter(
   from: string,
   msg: proto.IWebMessageInfo
 ): Promise<boolean> {
-  const normalized = text.toLowerCase().trim()
+  let normalized = text.toLowerCase().trim()
   const now = Date.now()
   const name = msg.pushName || from.split('@')[0]
+
+  // 🆕 Verificar si es nota de voz
+  const isAudio = !!msg.message?.audioMessage
+  if (isAudio) {
+    const buffer = await downloadMediaMessage(msg, 'buffer', {})
+    const tempAudioPath = `./temp/${from}-${Date.now()}.ogg`
+    const fs = await import('fs/promises')
+    await fs.writeFile(tempAudioPath, buffer)
+
+    try {
+      normalized = await transcribirAudio(tempAudioPath)
+    } catch (e) {
+      await sock.sendMessage(from, {
+        text: '❌ No pude entender tu nota de voz. ¿Podés intentar escribirlo por texto, por favor?' })
+      return true
+    } finally {
+      await fs.unlink(tempAudioPath)
+    }
+  }
 
   const user = await getUser(from)
   const lastSeen = user?.lastSeen ?? 0
@@ -57,16 +79,19 @@ export async function handleIntentRouter(
     ultimaIntencion: intent
   }
 
+  // 🆕 Si usuario responde "sí" a promociones
+  if (normalized === 'sí' || normalized === 'si' || normalized.includes('quiero promociones')) {
+    updatedUser.tags = Array.from(new Set([...(user?.tags || []), 'suscrito_promociones']))
+    await saveUser(updatedUser)
+    await sock.sendMessage(from, {
+      text: `✅ ¡Perfecto, ${name}! Quedás suscrito para recibir *promociones y novedades* por WhatsApp. ✨🖤`
+    })
+    return true
+  }
+
   await saveUser(updatedUser)
 
   const isGreeting = intent === 'greeting'
-
-  // 👋 Saludo sin intención comercial
-  if (isGreeting && !detectedProduct) {
-    return await handleWelcome(text, sock, from, msg)
-  }
-
-  // 💬 Intención comercial con mención de producto o precio
   const isComercialIntent =
     intent === 'catalog' ||
     intent === 'price' ||
@@ -74,9 +99,12 @@ export async function handleIntentRouter(
     intent === 'order' ||
     (isGreeting && detectedProduct)
 
+  if (isGreeting && !detectedProduct) {
+    return await handleWelcome(text, sock, from, msg)
+  }
+
   if (isComercialIntent && !saludoReciente) {
     if (intent === 'price' || detectedProduct) {
-      // Si la consulta es sobre precios, buscar productos relevantes
       const productosRelacionados = buscarProductosPorKeywords(normalized)
       if (productosRelacionados.length > 0) {
         const response = `Aquí tienes algunos productos relacionados con tu consulta sobre precios:\n\n${productosRelacionados.join('\n\n')}`
@@ -95,7 +123,6 @@ export async function handleIntentRouter(
     return true
   }
 
-  // 📦 Seguimiento
   if (intent === 'tracking') {
     await sock.sendMessage(from, {
       text: `📦 Si ya hiciste un pedido y quieres saber el estado, indícame tu número de orden o tu nombre completo. Estoy aquí para ayudarte.`
@@ -103,7 +130,6 @@ export async function handleIntentRouter(
     return true
   }
 
-  // 🛠️ Reclamos
   if (intent === 'complaint') {
     await sock.sendMessage(from, {
       text: `😔 Lamento que estés teniendo un inconveniente. Cuéntame qué pasó y haré lo posible por ayudarte.`
@@ -111,7 +137,6 @@ export async function handleIntentRouter(
     return true
   }
 
-  // 🙏 Agradecimientos
   if (intent === 'thank_you') {
     await sock.sendMessage(from, {
       text: `¡Con gusto! Gracias a ti por confiar en *${empresaConfig.nombre}*. 🖤 Si necesitas algo más, aquí estoy.`
@@ -119,15 +144,18 @@ export async function handleIntentRouter(
     return true
   }
 
-  // ❓ Preguntas generales
   if (intent === 'question') {
     await sock.sendMessage(from, {
-      text: `💬 ¡Buena pregunta! ¿Puedes darme un poco más de contexto para ayudarte mejor? Estoy aquí para ti.`
-    })
+      text: `💬 ¿Qué deseas saber? Aquí tienes opciones para guiarte:
+
+📦 *Envíos*
+🧾 *Pagos*
+📍 *Ubicación*
+📐 *Tallas*
+💬 *Otro*` })
     return true
   }
 
-  // 👋 Despedida
   if (intent === 'goodbye') {
     await sock.sendMessage(from, {
       text: `¡Hasta pronto! Gracias por visitar *${empresaConfig.nombre}*. Que tengas un excelente día. 👋`
@@ -135,22 +163,30 @@ export async function handleIntentRouter(
     return true
   }
 
-  // 🌍 Respuesta a ubicación
-// Función para eliminar los acentos y normalizar el texto
-const removeAccents = (str: string): string =>
-  str.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  if ([
+    'ubicacion', 'donde esta la tienda', 'donde queda la tienda',
+    'direccion', 'donde esta', 'direccion tienda',
+    'donde esta ubicada', 'ubicada'
+  ].some(keyword => removeAccents(normalized).includes(removeAccents(keyword)))) {
+    const { direccion, telefono, correo, ubicacionURL } = empresaConfig.contacto
+    await sock.sendMessage(from, {
+      text: `🏠 ¡Hola, ${name}! Aquí está la dirección de nuestra tienda:
 
-// Verificar si el mensaje tiene relación con la ubicación
-if (['ubicacion', 'donde esta la tienda', 'donde queda la tienda', 'direccion', 'donde esta', 'direccion tienda', 'donde esta ubicada', 'ubicada'].some(keyword => removeAccents(normalized).includes(removeAccents(keyword)))) {
-  const { direccion, telefono, correo, ubicacionURL } = empresaConfig.contacto
-  await sock.sendMessage(from, {
-    text: `🏠 ¡Hola, ${name}! Aquí está la dirección de nuestra tienda:\n\n📍 *Dirección:* ${direccion}\n🔗 Puedes ver nuestra ubicación en el siguiente enlace de Google Maps: ${ubicacionURL}\n📞 Si tienes más preguntas, no dudes en contactarnos a través de:\n📱 *Teléfono:* ${telefono}\n✉️ *Correo:* ${correo}`
-  })
-  return true
-}
+📍 *Dirección:* ${direccion}
+🔗 Google Maps: ${ubicacionURL}
+📱 Teléfono: ${telefono}
+✉️ Correo: ${correo}`
+    })
+    return true
+  }
 
+  if (normalized.includes('cancelar') || normalized.includes('arrepenti') || normalized.includes('ya no lo quiero')) {
+    await sock.sendMessage(from, {
+      text: `✅ Tu solicitud para cancelar el pedido fue registrada. Si ya realizaste un pago, por favor indícalo para procesar el reembolso.`
+    })
+    return true
+  }
 
-  // 🤖 Fallback: sin intención clara pero posible interés comercial
   const fallbackResponse = getCatalogResponse(name, normalized, user?.lastSeen)
   if (!fallbackResponse) {
     await sock.sendMessage(from, {
@@ -159,5 +195,6 @@ if (['ubicacion', 'donde esta la tienda', 'donde queda la tienda', 'direccion', 
   } else {
     await sock.sendMessage(from, { text: fallbackResponse })
   }
+
   return true
 }
