@@ -3,12 +3,11 @@
   "version": "1.0.0",
   "description": "Bot inteligente para WhatsApp con AI, memoria y pagos.",
   "main": "dist/index.js",
-"scripts": {
-  "dev": "concurrently \"ts-node -r tsconfig-paths/register server.ts\" \"ts-node -r tsconfig-paths/register index.ts\"",
-"build": "tsup index.ts --format cjs --dts --out-dir dist --target node20 --clean",
-"start": "node -r tsconfig-paths/register dist/index.js",
-  "test": "echo \"No hay pruebas definidas aún\" && exit 1"
-
+  "scripts": {
+    "dev": "concurrently \"ts-node -r tsconfig-paths/register server.ts\" \"ts-node -r tsconfig-paths/register index.ts\"",
+    "build": "tsup index.ts --format cjs --dts --out-dir dist --target node20 --clean",
+    "start": "NODE_ENV=production node -r tsconfig-paths/register dist/index.js",
+    "test": "echo \"No hay pruebas definidas aún\" && exit 1"
   },
   "keywords": [
     "whatsapp",
@@ -19,7 +18,7 @@
   ],
   "author": "JCAVALIER",
   "license": "ISC",
-"packageManager": "pnpm@10.12.1",
+  "packageManager": "pnpm@10.12.1",
   "dependencies": {
     "@bot-whatsapp/bot": "^0.1.38",
     "@whiskeysockets/baileys": "^6.7.18",
@@ -48,6 +47,7 @@
     "concurrently": "^7.0.0",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "tsup": "^8.5.0"
   }
 }
