@@ -68,15 +68,18 @@ export async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth')
   const { version } = await fetchLatestBaileysVersion()
 
-  const sock: WASocket = makeWASocket({
-    version,
-    auth: {
-      creds: state.creds,
-      keys: makeCacheableSignalKeyStore(state.keys, undefined)
-    },
-    markOnlineOnConnect: true,
-    logger: silentLogger
-  })
+const sock: WASocket = makeWASocket({
+  version,
+  auth: {
+    creds: state.creds,
+    keys: makeCacheableSignalKeyStore(state.keys, undefined)
+  },
+  markOnlineOnConnect: true,
+  logger: undefined, // Activar logs de WhatsApp (baileys)
+  syncFullHistory: false, // Opcional, para conexiones más rápidas
+  connectTimeoutMs: 45000 // Aumenta timeout a 45 segundos
+})
+
 
   sock.ev.on('creds.update', saveCreds)
 
