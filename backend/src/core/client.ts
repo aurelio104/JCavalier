@@ -38,19 +38,17 @@ import fs from 'fs/promises'
 import path from 'path'
 import { randomUUID } from 'crypto'
 import os from 'os' 
+import pino from 'pino'
 
 const frustrationCounter: Record<string, number> = {}
 const MAX_FRUSTRATION = 2
 
-const silentLogger = {
-  level: 'fatal',
-  info: () => {},
-  error: () => {},
-  warn: () => {},
-  debug: () => {},
-  trace: () => {},
-  child: () => silentLogger
-}
+const silentLogger = pino({
+  level: 'silent',
+  transport: {
+    target: 'pino-pretty'
+  }
+})
 
 const removeAccents = (str: string): string =>
   str.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
