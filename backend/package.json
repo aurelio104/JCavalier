@@ -5,7 +5,7 @@
   "main": "dist/index.js",
 "scripts": {
   "dev": "concurrently \"ts-node -r tsconfig-paths/register server.ts\" \"ts-node -r tsconfig-paths/register index.ts\"",
-  "build": "tsc",
+"build": "tsup index.ts --format cjs --dts --out-dir dist --target node20 --clean",
 "start": "node -r tsconfig-paths/register dist/index.js",
   "test": "echo \"No hay pruebas definidas aún\" && exit 1"
 
