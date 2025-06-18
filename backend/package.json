@@ -46,6 +46,7 @@
     "@types/node": "^22.15.30",
     "@types/qrcode-terminal": "^0.12.2",
     "concurrently": "^7.0.0",
+    "pino-pretty": "^13.0.0",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "tsup": "^8.5.0",
