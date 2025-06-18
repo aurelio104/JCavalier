@@ -43,12 +43,15 @@ import pino from 'pino'
 const frustrationCounter: Record<string, number> = {}
 const MAX_FRUSTRATION = 2
 
-const silentLogger = pino({
-  level: 'silent',
-  transport: {
-    target: 'pino-pretty'
-  }
-})
+const silentLogger = process.env.NODE_ENV === 'production'
+  ? pino({ level: 'silent' }) // sin transport
+  : pino({
+      level: 'silent',
+      transport: {
+        target: 'pino-pretty',
+        options: { colorize: true }
+      }
+    })
 
 const removeAccents = (str: string): string =>
   str.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
