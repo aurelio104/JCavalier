@@ -37,6 +37,7 @@ import { transcribirNotaDeVoz } from '../utils/whisper.engine'
 import fs from 'fs/promises'
 import path from 'path'
 import { randomUUID } from 'crypto'
+import os from 'os' 
 
 const frustrationCounter: Record<string, number> = {}
 const MAX_FRUSTRATION = 2
@@ -258,71 +259,87 @@ export async function startBot() {
       return
     }
 
-    if (isImage) {
-      userMemory = await getUser(from)
-      if (!userMemory) return
+if (isImage) {
+  userMemory = await getUser(from)
+  if (!userMemory) return
 
-      const buffer = await downloadMediaMessage(msg, 'buffer', {})
-      const tempPath = path.join(__dirname, `../../temp/${randomUUID()}.jpg`)
-      await fs.writeFile(tempPath, buffer)
+  const buffer = await downloadMediaMessage(msg, 'buffer', {})
 
-      void sock.sendMessage(from, {
-        text: `\ud83d\udcf8 Imagen recibida para an\u00e1lisis. Gracias, ${name}.`
-      })
+  const tempDir = process.env.NODE_ENV === 'production'
+    ? os.tmpdir()
+    : path.join(__dirname, '../../temp')
+  const tempPath = path.join(tempDir, `${randomUUID()}.jpg`)
 
-      const textoDetectado = await leerTextoDesdeImagen(tempPath)
-      const metodo = userMemory.metodoPago || ''
-      const tasaBCV = userMemory.tasaBCV || 0
-      const totalEsperadoBs = typeof userMemory.totalBs === 'number'
-        ? userMemory.totalBs
-        : parseFloat(userMemory.totalBs || '0')
+  await fs.writeFile(tempPath, buffer)
 
-      const resultadoOCR = validarComprobante(
-        textoDetectado,
-        totalEsperadoBs,
-        metodo,
-        tasaBCV
-      )
+  void sock.sendMessage(from, {
+    text: `📸 Imagen recibida para análisis. Gracias, ${name}.`
+  })
 
-      await fs.unlink(tempPath)
-      void sock.sendMessage(from, { text: resultadoOCR.resumen })
+  const textoDetectado = await leerTextoDesdeImagen(tempPath)
 
-      if (!resultadoOCR.valido) {
+  if (!textoDetectado || textoDetectado.trim().length < 10) {
+    await fs.unlink(tempPath)
+    void sock.sendMessage(from, {
+      text: `⚠️ No se pudo leer bien el comprobante. Asegúrate de que la imagen sea clara, que incluya el monto y el método de pago, y vuelve a enviarla.`
+    })
+    return
+  }
+
+  const metodo = userMemory.metodoPago || ''
+  const tasaBCV = userMemory.tasaBCV || 0
+  const totalEsperadoBs = typeof userMemory.totalBs === 'number'
+    ? userMemory.totalBs
+    : parseFloat(userMemory.totalBs || '0')
+
+  const resultadoOCR = validarComprobante(
+    textoDetectado,
+    totalEsperadoBs,
+    metodo,
+    tasaBCV
+  )
+
+  await fs.unlink(tempPath)
+
+  void sock.sendMessage(from, { text: resultadoOCR.resumen })
+
+  if (!resultadoOCR.valido) {
+    void sock.sendMessage(from, {
+      text: `⚠️ El comprobante no coincide con los datos esperados. Por favor, verifica el monto o el correo y vuelve a intentarlo.`
+    })
+    return
+  }
+
+  // ✔️ Comprobante válido: actualizamos estado
+  userMemory.esperandoComprobante = false
+  userMemory.ultimaIntencion = 'delivery'
+  await saveConversationToMongo(from, userMemory)
+
+  await runDeliveryFlowManualmente(
+    { from, body: '', pushName: name },
+    {
+      flowDynamic: async (msg: string | string[]) => {
+        void sock.sendMessage(from, { text: Array.isArray(msg) ? msg.join('\n\n') : msg })
+      },
+      gotoFlow: async () => {},
+      state: {
+        getMyState: async () => userMemory!,
+        update: async (d: Partial<UserMemory>) => {
+          Object.assign(userMemory!, d)
+          await saveConversationToMongo(from, userMemory!)
+        },
+        clear: async () => {}
+      },
+      fallBack: async () => {
         void sock.sendMessage(from, {
-          text: `\u26a0\ufe0f El comprobante no coincide con los datos esperados. Por favor, verifica el monto o el correo y vuelve a intentarlo.`
+          text: 'No entendí tu mensaje, ¿podés repetirlo?'
         })
-        return
       }
-
-      // \u2714\ufe0f ACTUALIZAR EN MEMORIA TAMBI\u00c9N
-      userMemory.esperandoComprobante = false
-      userMemory.ultimaIntencion = 'delivery'
-
-      await saveConversationToMongo(from, userMemory)
-
-      await runDeliveryFlowManualmente(
-        { from, body: '', pushName: name },
-        {
-          flowDynamic: async (msg: string | string[]) => {
-            void sock.sendMessage(from, { text: Array.isArray(msg) ? msg.join('\n\n') : msg })
-          },
-          gotoFlow: async () => {},
-          state: {
-            getMyState: async () => userMemory!,
-            update: async (d: Partial<UserMemory>) => {
-              Object.assign(userMemory!, d)
-              await saveConversationToMongo(from, userMemory!)
-            },
-            clear: async () => {}
-          },
-          fallBack: async () => {
-            void sock.sendMessage(from, { text: 'No entend\u00ed tu mensaje, \u00bfpod\u00e9s repetirlo?' })
-          }
-        }
-      )
-      return
     }
-    
+  )
+  return
+}
+
     if (isText && userMemory?.ultimaIntencion === 'delivery') {
       await runDeliveryFlowManualmente(
         { from, body: text, pushName: name },
