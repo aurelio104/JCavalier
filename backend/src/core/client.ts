@@ -37,21 +37,11 @@ import { transcribirNotaDeVoz } from '../utils/whisper.engine'
 import fs from 'fs/promises'
 import path from 'path'
 import { randomUUID } from 'crypto'
-import os from 'os' 
+import os from 'os'
 import pino from 'pino'
 
 const frustrationCounter: Record<string, number> = {}
 const MAX_FRUSTRATION = 2
-
-const silentLogger = process.env.NODE_ENV === 'production'
-  ? pino({ level: 'silent' }) // sin transport
-  : pino({
-      level: 'silent',
-      transport: {
-        target: 'pino-pretty',
-        options: { colorize: true }
-      }
-    })
 
 const removeAccents = (str: string): string =>
   str.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
@@ -69,18 +59,17 @@ export async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth')
   const { version } = await fetchLatestBaileysVersion()
 
-const sock: WASocket = makeWASocket({
-  version,
-  auth: {
-    creds: state.creds,
-    keys: makeCacheableSignalKeyStore(state.keys, undefined)
-  },
-  markOnlineOnConnect: true,
-  logger: undefined, // Activar logs de WhatsApp (baileys)
-  syncFullHistory: false, // Opcional, para conexiones más rápidas
-  connectTimeoutMs: 45000 // Aumenta timeout a 45 segundos
-})
-
+  const sock: WASocket = makeWASocket({
+    version,
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, undefined)
+    },
+    markOnlineOnConnect: true,
+    logger: pino({ level: 'silent' }),
+    syncFullHistory: false,
+    connectTimeoutMs: 45000
+  })
 
   sock.ev.on('creds.update', saveCreds)
 
@@ -99,6 +88,7 @@ const sock: WASocket = makeWASocket({
       console.log('✅ Bot conectado a WhatsApp')
     }
   })
+
 
   sock.ev.on('messages.upsert', async ({ messages }: { messages: proto.IWebMessageInfo[] }) => {
     const msg = messages[0]
