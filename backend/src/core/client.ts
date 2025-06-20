@@ -54,9 +54,16 @@ function calcularFrecuencia(historial: { timestamp: number }[]): 'ocasional' | '
   return 'ocasional'
 }
 
+
+let botStarted = false
+
 export async function startBot() {
+  if (botStarted) return
+  botStarted = true
+
   await connectMongo()
-  const { state, saveCreds } = await useMultiFileAuthState('auth')
+  const { state, saveCreds } = await useMultiFileAuthState(process.env.AUTH_FOLDER || 'auth')
+
   const { version } = await fetchLatestBaileysVersion()
 
   const sock: WASocket = makeWASocket({
@@ -80,9 +87,18 @@ export async function startBot() {
     }
 
     if (connection === 'close') {
-      const shouldReconnect =
-        (lastDisconnect?.error as any)?.output?.statusCode !== DisconnectReason.loggedOut
-      if (shouldReconnect) startBot()
+      const reasonCode = (lastDisconnect?.error as any)?.output?.statusCode
+      console.warn(`⚠️ Desconexión detectada. Código: ${reasonCode}`)
+
+      const shouldReconnect = reasonCode !== DisconnectReason.loggedOut
+
+      if (shouldReconnect) {
+        botStarted = false
+        console.log('🔄 Reintentando conexión...')
+        setTimeout(() => startBot(), 3000)
+      } else {
+        console.log('🛑 No se reintentará la conexión automáticamente.')
+      }
     } else if (connection === 'open') {
       console.clear()
       console.log('✅ Bot conectado a WhatsApp')
@@ -90,37 +106,38 @@ export async function startBot() {
   })
 
 
-  sock.ev.on('messages.upsert', async ({ messages }: { messages: proto.IWebMessageInfo[] }) => {
-    const msg = messages[0]
-    if (!msg.message || msg.key.fromMe) return
+ sock.ev.on('messages.upsert', async ({ messages }: { messages: proto.IWebMessageInfo[] }) => {
+    try {
+      const msg = messages[0]
+      if (!msg.message || msg.key.fromMe) return
 
-    const from = typeof msg.key.remoteJid === 'string' ? msg.key.remoteJid.trim() : ''
-    const name = msg.pushName || from.split('@')[0] || 'cliente'
-    const isImage = !!msg.message?.imageMessage
-    const isText = !!msg.message?.conversation
-    const isAudio = !!msg.message?.audioMessage && !msg.message?.audioMessage?.ptt === false
-    let rawText = isText ? msg.message?.conversation?.trim() || '' : ''
+      const from = typeof msg.key.remoteJid === 'string' ? msg.key.remoteJid.trim() : ''
+      const name = msg.pushName || from.split('@')[0] || 'cliente'
+      const isImage = !!msg.message?.imageMessage
+      const isText = !!msg.message?.conversation
+      const isAudio = !!msg.message?.audioMessage && !msg.message?.audioMessage?.ptt === false
+      let rawText = isText ? msg.message?.conversation?.trim() || '' : ''
 
-    if (!from || (!rawText && !isImage && !isAudio) || from === 'status@broadcast') return
+      if (!from || (!rawText && !isImage && !isAudio) || from === 'status@broadcast') return
 
-    if (isAudio) {
-      const buffer = await downloadMediaMessage(msg, 'buffer', {})
-      const tempPath = path.join(__dirname, `../../temp/${randomUUID()}.mp3`)
-      await fs.writeFile(tempPath, buffer)
+      if (isAudio) {
+        const buffer = await downloadMediaMessage(msg, 'buffer', {})
+        const tempPath = path.join(__dirname, `../../temp/${randomUUID()}.mp3`)
+        await fs.writeFile(tempPath, buffer)
 
-      const transcripcion = await transcribirNotaDeVoz(tempPath)
-      await fs.unlink(tempPath)
+        const transcripcion = await transcribirNotaDeVoz(tempPath)
+        await fs.unlink(tempPath)
 
-      if (!transcripcion || transcripcion.length < 3) {
-        await sock.sendMessage(from, {
-          text: '⚠️ No pude entender bien tu nota de voz. ¿Podés repetirlo por texto o reenviarla?'
-        })
-        return
+        if (!transcripcion || transcripcion.length < 3) {
+          await sock.sendMessage(from, {
+            text: '⚠️ No pude entender bien tu nota de voz. ¿Podés repetirlo por texto o reenviarla?'
+          })
+          return
+        }
+
+        msg.message.conversation = transcripcion
+        rawText = transcripcion
       }
-
-      msg.message.conversation = transcripcion
-      rawText = transcripcion
-    }
 
     let userMemory: UserMemory | null = await getUser(from)
     const lang = detectLanguageFromHistory(userMemory?.history?.map(h => h.message) || [], rawText)
@@ -396,6 +413,13 @@ if (isImage) {
       void sock.sendMessage(from, {
         text: 'Percibo que algo no está bien 😔. Si quieres, puedo ayudarte o pasarte con alguien del equipo.'
       })
+    }
+    } catch (err: any) {
+      if (err?.message?.includes('Bad MAC')) {
+        console.warn('🔐 Bad MAC detectado. El mensaje no pudo ser desencriptado correctamente.')
+      } else {
+        console.error('❌ Error inesperado en message.upsert:', err)
+      }
     }
   })
 }

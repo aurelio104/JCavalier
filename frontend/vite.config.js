@@ -3,14 +3,19 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  base: './', // Clave para rutas relativas
+  base: './', // ✅ Rutas relativas para deploy sin errores
 
-  // Configuración del servidor
+  // 🔧 Configuración del servidor de desarrollo
   server: {
     hmr: {
-      protocol: 'ws',  // Usar WebSocket
-      host: 'localhost',  // Asegurarte de que el host esté configurado correctamente
-      port: 5173, // Puerto por defecto de Vite
+      protocol: 'ws',  // Usar WebSocket para hot reload
+      host: 'localhost',
+      port: 5173,
     },
+  },
+
+  // ✅ Solución para que jwt-decode funcione bien en Vite (es CommonJS)
+  optimizeDeps: {
+    include: ['jwt-decode'],
   },
 });

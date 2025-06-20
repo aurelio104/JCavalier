@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff } from 'lucide-react';
-import { login } from '../utils/auth'; // Usamos la función login de auth.js
+import { login, isAuthenticated } from '../utils/auth';
 
 const AdminLoginForm = () => {
   const [email, setEmail] = useState('');
@@ -12,20 +12,26 @@ const AdminLoginForm = () => {
   const navigate = useNavigate();
   const emailRef = useRef(null);
 
+  // Foco en el input al cargar
   useEffect(() => {
-    emailRef.current?.focus(); // Foca en el campo de email cuando el componente se monte
+    emailRef.current?.focus();
   }, []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault(); // Prevenir el comportamiento predeterminado de envío del formulario
+  // Si ya está autenticado, redirigir automáticamente al dashboard
+  useEffect(() => {
+    if (isAuthenticated()) {
+      navigate('/admin/dashboard');
+    }
+  }, [navigate]);
 
-    // Intentamos hacer login con las credenciales proporcionadas
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
     const success = await login(email, password);
-    
     if (success) {
-      navigate('/admin/dashboard'); // Redirigir a la página de admin/dashboard si el login es exitoso
+      navigate('/admin/dashboard');
     } else {
-      setError('Credenciales inválidas o error de conexión'); // Mejorar mensaje de error
+      setError('Credenciales inválidas o error de conexión');
     }
   };
 
@@ -38,11 +44,11 @@ const AdminLoginForm = () => {
         backgroundPosition: 'center',
       }}
     >
-      {/* Capa oscura y cristalina */}
+      {/* Fondo oscuro */}
       <motion.div className="absolute inset-0 bg-black z-0" initial={{ opacity: 1 }} animate={{ opacity: 0.5 }} transition={{ duration: 1.4 }} />
       <motion.div className="absolute inset-0 z-10 backdrop-blur-xl bg-white bg-opacity-5" initial={{ opacity: 0 }} animate={{ opacity: 0.2 }} transition={{ duration: 1.8, delay: 0.6 }} />
 
-      {/* Formulario */}
+      {/* Contenedor del formulario */}
       <motion.div
         className="relative z-20 px-6 text-white flex flex-col items-center space-y-8 w-full max-w-sm"
         initial="hidden"
@@ -92,7 +98,7 @@ const AdminLoginForm = () => {
 
           {error && (
             <div className="text-red-400 text-sm text-center">
-              {error} {/* Mostrar el error si ocurre */}
+              {error}
             </div>
           )}
 
