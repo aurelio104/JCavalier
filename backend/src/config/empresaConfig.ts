@@ -62,63 +62,63 @@ delivery: {
       keywords: ['monarch', 'camisa', 'linen', 'lino', 'manga larga'],
       items: ['camisa', 'blusa'],
       price: 25,  // Precio actualizado
-      link: 'https://j-cavalier.vercel.app',
+      link: 'https://jcavalier.com',
     },
     'Franela Imperial estilo Old money': {
       description: 'Elaboradas en tela tejida Jacquard suave y ligera.',
       keywords: ['franela', 'imperial', 'old money', 'camisa'],
       items: ['camisa'],
       price: 25,  // Precio actualizado
-      link: 'https://j-cavalier.vercel.app',
+      link: 'https://jcavalier.com',
     },
     'Chemise Imperial estilo Old money': {
       description: 'Chemises elegantes con corte moderno.',
       keywords: ['chemise', 'old money', 'imperial'],
       items: ['chemise'],
       price: 25,  // Precio actualizado
-      link: 'https://j-cavalier.vercel.app',
+      link: 'https://jcavalier.com',
     },
     'Set Diamond estilo old money': {
       description: 'Conjunto elegante casual con short o pantalón.',
       keywords: ['diamond', 'conjunto', 'set', 'old money', 'short', 'pantalón'],
       items: ['conjunto', 'set', 'short', 'pantalón'],
       price: 25,  // Precio actualizado
-      link: 'https://j-cavalier.vercel.app',
+      link: 'https://jcavalier.com',
     },
     'Gold Sport Set Dama': {
       description: 'Conjunto deportivo en tela French Terry.',
       keywords: ['dama', 'deportivo', 'sport', 'gold', 'set'],
       items: ['set', 'dama'],
       price: 25,  // Precio actualizado
-      link: 'https://j-cavalier.vercel.app',
+      link: 'https://jcavalier.com',
     },
     'Gold Sport Set Caballero': {
       description: 'Conjunto deportivo masculino en tela French Terry.',
       keywords: ['caballero', 'deportivo', 'sport', 'gold', 'set'],
       items: ['set', 'caballero'],
       price: 25,  // Precio actualizado
-      link: 'https://j-cavalier.vercel.app',
+      link: 'https://jcavalier.com',
     },
     'Sun Set': {
       description: 'Looks tropicales perfectos para playa o verano.',
       keywords: ['sun', 'playa', 'verano', 'conjunto', 'sun set'],
       items: ['conjunto', 'sun set'],
       price: 25,  // Precio actualizado
-      link: 'https://j-cavalier.vercel.app',
+      link: 'https://jcavalier.com',
     },
     'Camisas Cubanas': {
       description: 'Camisas frescas con aire tropical.',
       keywords: ['cubana', 'camisa', 'camisas'],
       items: ['camisa'],
       price: 25,  // Precio actualizado
-      link: 'https://j-cavalier.vercel.app',
+      link: 'https://jcavalier.com',
     },
     'Merch Oversize Gladiador': {
       description: 'Estilo oversize con actitud.',
       keywords: ['gladiador', 'oversize', 'merch'],
       items: ['oversize', 'merch'],
       price: 25,  // Precio actualizado
-      link: 'https://j-cavalier.vercel.app',
+      link: 'https://jcavalier.com',
     },
   },
 
@@ -143,7 +143,7 @@ delivery: {
 
   // URLs
   enlaces: {
-    catalogo: 'https://j-cavalier.vercel.app',  // Enlace al catálogo general de productos
+    catalogo: 'https://jcavalier.com',  // Enlace al catálogo general de productos
   },
 
   // Configuración del bot
