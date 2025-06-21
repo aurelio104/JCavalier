@@ -1,4 +1,5 @@
 name: bot-inteligente
+
 build:
   commands:
     - corepack enable
@@ -12,3 +13,10 @@ run:
     - name: NODE_ENV
       value: production
   working_dir: backend
+  healthcheck:
+    http_get:
+      path: /
+      port: 3000
+      interval_seconds: 10
+      timeout_seconds: 5
+      failure_threshold: 3

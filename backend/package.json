@@ -5,6 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "concurrently \"ts-node -r tsconfig-paths/register server.ts\" \"ts-node -r tsconfig-paths/register index.ts\"",
+    "start:local": "dotenv -e .env -- concurrently \"ts-node -r tsconfig-paths/register server.ts\" \"ts-node -r tsconfig-paths/register index.ts\"",
     "build": "tsup index.ts --format cjs --dts --out-dir dist --target node20 --clean",
     "start": "NODE_ENV=production node -r tsconfig-paths/register dist/index.js",
     "test": "echo \"No hay pruebas definidas aún\" && exit 1"
@@ -52,6 +53,7 @@
     "@types/pdfkit": "^0.14.0",
     "@types/qrcode-terminal": "^0.12.2",
     "concurrently": "^7.6.0",
+    "dotenv-cli": "^8.0.0",
     "pino-pretty": "^13.0.0",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
