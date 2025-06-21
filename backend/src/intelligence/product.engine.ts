@@ -1,32 +1,33 @@
 // ✅ src/intelligence/product.engine.ts
 
-// Definir la interfaz ProductKeywords con un índice de tipo string
 interface ProductKeywords {
-  [key: string]: string[];  // Permite cualquier clave de tipo string con valores tipo string[]
+  [key: string]: string[];
 }
 
-// Suponiendo que 'productData' es un objeto con estas claves
 export const productData: ProductKeywords = {
-  camisa: ['camisa', 'blusa', 'shirt'],
+  camisa: ['camisa', 'camisas', 'blusa', 'shirt'],
   conjunto: ['conjunto', 'outfit', 'set'],
-  pantalon: ['pantalon', 'jeans', 'pants']
-};
+  pantalon: ['pantalon', 'pantalones', 'jeans', 'pants'],
+  short: ['short', 'bermuda'],
+  franela: ['franela', 'franelas', 't-shirt', 'playera'],
+  chemise: ['chemise', 'polo'],
+  deportivo: ['sport', 'deportivo', 'oversize', 'gym', 'entrenar'],
+  cubana: ['cubana', 'cubanas'],
+  verano: ['sun set', 'verano', 'playa'],
+  merch: ['merch', 'gladiador', 'oversize gladiador'],
+  accesorio: ['accesorio', 'gorra', 'sombrero']
+}
 
 /**
- * Detecta la colección/producto basado en palabras clave encontradas en el texto del usuario.
- * Retorna el nombre exacto de la colección si se detecta.
+ * Detecta el producto o colección según palabras clave del texto.
+ * Devuelve el identificador de la colección si encuentra coincidencia.
  */
 export function detectProductByKeywords(text: string): string | null {
-  const normalized = text.toLowerCase();
+  const normalized = text.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 
-  // Recorre las claves específicas de la colección
   for (const collection in productData) {
-    if (productData.hasOwnProperty(collection)) {
-      for (const keyword of productData[collection]) {
-        if (normalized.includes(keyword)) {
-          return collection;
-        }
-      }
+    if (productData[collection].some(keyword => normalized.includes(keyword))) {
+      return collection;
     }
   }
 
@@ -34,15 +35,22 @@ export function detectProductByKeywords(text: string): string | null {
 }
 
 /**
- * Devuelve la descripción emocional del producto, utilizada en respuestas humanas.
+ * Devuelve una descripción emocional breve del producto.
  */
 export function getProductDescription(collection: string): string {
-  // Aquí debes agregar las descripciones emocionales asociadas a cada colección
-  const descriptions: { [key: string]: string } = {
-    camisa: 'Camisas con un diseño único y elegante.',
-    conjunto: 'Conjuntos que combinan perfectamente para cualquier ocasión.',
-    pantalon: 'Pantalones cómodos y con estilo para cada día.'
+  const descriptions: Record<string, string> = {
+    camisa: '🧥 Camisas con corte sobrio y tejido premium.',
+    conjunto: '✨ Conjuntos cómodos y versátiles, ideales para clima cálido.',
+    pantalon: '👖 Pantalones con estilo clásico y ajuste relajado.',
+    short: '🩳 Shorts livianos, perfectos para el día a día.',
+    franela: '👕 Franelas frescas con estilo casual.',
+    chemise: '🧵 Chemises estilo Old Money en tela Jacquard.',
+    deportivo: '🏋️ Conjuntos sport oversize para dama y caballero.',
+    cubana: '🌴 Camisas cubanas con vibra tropical y relajada.',
+    verano: '☀️ Looks frescos para el verano, como los de la colección Sun Set.',
+    merch: '🔥 Nuestra línea Gladiador en estilo oversize y algodón 100%.',
+    accesorio: '🧢 Complementos que elevan cualquier look.'
   };
 
-  return descriptions[collection] || 'Producto desconocido';
+  return descriptions[collection] || '🖤 Prenda destacada de nuestra colección.';
 }

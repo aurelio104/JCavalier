@@ -1,5 +1,3 @@
-// ✅ src/flows/pending-payment-reminder.flow.ts
-
 import { addKeyword, EVENTS, FlowFnProps } from '@bot-whatsapp/bot'
 import { empresaConfig } from '../config/empresaConfig'
 
@@ -10,46 +8,45 @@ export const pendingPaymentReminderFlow = addKeyword(EVENTS.MESSAGE)
 
     const ahora = Date.now()
     const ultimaInteraccion = data.timestampTasaBCV || ahora
-    const minutosTranscurridos = (ahora - ultimaInteraccion) / (1000 * 60)
+    const minutosTranscurridos = (ahora - ultimaInteraccion) / 60000
     const horasTranscurridas = minutosTranscurridos / 60
 
-    const mensaje = ctx.body.toLowerCase()
+    const mensaje = ctx.body.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
-    // 💬 Reconocer respuestas típicas del usuario
-    if (mensaje.includes('ya pague') || mensaje.includes('ya lo mande')) {
+    // 💬 Respuestas comunes del usuario
+    if (/ya pague|ya lo mande/.test(mensaje)) {
       return await flowDynamic([
         '🔍 Revisaremos si recibimos tu comprobante. Si ya lo enviaste, ¡gracias! Si no, por favor reenvíalo aquí 📎.'
       ])
     }
 
-    if (mensaje.includes('me equivoqué') || mensaje.includes('cambiar metodo') || mensaje.includes('cambiar método')) {
+    if (/me equivoque|cambiar metodo|cambiar método/.test(mensaje)) {
       return await flowDynamic([
         '⚠️ Entendido. Puedes indicarme si deseas reiniciar el proceso de pago o cambiar el método. Estoy aquí para ayudarte.'
       ])
     }
 
-    if (mensaje.includes('no se como') || mensaje.includes('cómo envio') || mensaje.includes('como envio')) {
+    if (/no se como|como envio|cómo envio/.test(mensaje)) {
       return await flowDynamic([
         '🧾 Para enviar el comprobante, haz clic en el clip 📎 y selecciona la imagen del pago desde tu galería o archivos.'
       ])
     }
 
-    // ⏳ Evitar spam si el usuario acaba de escribir o pasó demasiado tiempo
-    if (minutosTranscurridos < 10) return
-    if (horasTranscurridas > 24) return
+    // ⏳ Evita respuestas repetidas en menos de 10 min o después de 24h
+    if (minutosTranscurridos < 10 || horasTranscurridas > 24) return
 
-    // ⏰ Mensajes progresivos según tiempo
-    let mensajeRecordatorio = ''
+    // ⏰ Mensajes según el tiempo de espera
+    let recordatorio = ''
     if (horasTranscurridas < 1) {
-      mensajeRecordatorio = `⏳ Seguimos esperando tu *comprobante de pago*. Envíalo por aquí cuando lo tengas.`
+      recordatorio = `⏳ Seguimos esperando tu *comprobante de pago*. Envíalo por aquí cuando lo tengas.`
     } else if (horasTranscurridas < 4) {
-      mensajeRecordatorio = `📌 Aún no hemos recibido tu *comprobante*. ¿Necesitas ayuda para enviarlo? Estoy aquí.`
+      recordatorio = `📌 Aún no hemos recibido tu *comprobante*. ¿Necesitas ayuda para enviarlo? Estoy aquí.`
     } else {
-      mensajeRecordatorio = `⚠️ Han pasado varias horas y aún no hemos recibido tu comprobante. Si tuviste algún problema, escríbeme y te ayudo.`
+      recordatorio = `⚠️ Han pasado varias horas y aún no hemos recibido tu comprobante. Si tuviste algún problema, escríbeme y te ayudo.`
     }
 
     await flowDynamic([
-      mensajeRecordatorio,
+      recordatorio,
       `✨ Gracias por confiar en *${empresaConfig.nombre}*.`
     ])
   })

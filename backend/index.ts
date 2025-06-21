@@ -3,23 +3,24 @@ import { startBot } from './src/core/client'
 import express from 'express'
 import dotenv from 'dotenv'
 
-// Carga variables de entorno (.env en desarrollo)
+// ✅ Carga variables de entorno desde .env
 dotenv.config()
 
-// Inicializa el bot de WhatsApp
+// ✅ Inicia el bot de WhatsApp
 startBot()
 
-// App express para Koyeb y salud local
+// ✅ Crea app Express para healthcheck o pruebas en local
 const app = express()
-app.get('/', (_, res) => res.send('✅ Bot activo en Koyeb'))
+app.get('/', (_, res) => res.send('✅ Bot activo y corriendo'))
 
 /**
- * 🧠 Lógica de puerto:
- * - Koyeb define PORT automáticamente (usualmente 3000)
- * - En local puedes definir BOT_PORT en tu .env para evitar conflictos con el server.ts (puerto 5000)
+ * 🧠 Prioridad de puertos:
+ * - En desarrollo local, usa BOT_PORT (para no chocar con server.ts que usa PORT)
+ * - En Koyeb (producción), se define automáticamente PORT
  */
-const PORT = process.env.PORT || process.env.BOT_PORT || 3000
+const PORT = process.env.BOT_PORT || process.env.PORT || 3000
 
+// ✅ Inicia el servidor HTTP
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor HTTP corriendo en puerto ${PORT}`)
+  console.log(`🚀 Bot WhatsApp corriendo en puerto ${PORT}`)
 })

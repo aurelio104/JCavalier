@@ -63,14 +63,18 @@ export const pasoProcesarMetodo = async (
 
   const esPagoMovil = /\b1\b|pago movil|movil/.test(respuesta)
   const esTransferencia = /\b2\b|transferencia/.test(respuesta)
+  const esZelle = /\b3\b|zelle/.test(respuesta)
+  const esBinance = /\b4\b|binance/.test(respuesta)
+  const esEfectivo = /\b5\b|efectivo/.test(respuesta)
   const necesitaBCV = esPagoMovil || esTransferencia
 
   if (necesitaBCV && (!tasaBCV || tasaBCV <= 0 || vencida)) {
     tasaBCV = await obtenerTasaBCV()
     if (tasaBCV <= 0) {
-      return void await flowDynamic([
+      await flowDynamic([
         '❌ Hubo un problema obteniendo la tasa oficial del dólar. Intenta nuevamente en unos minutos.'
       ])
+      return
     }
     timestamp = Date.now()
   }
@@ -83,7 +87,7 @@ export const pasoProcesarMetodo = async (
   let metodo: MetodoPago | '' = ''
   let mensajePago = ''
 
-  if (/\b5\b|efectivo/.test(respuesta)) {
+  if (esEfectivo) {
     metodo = 'Efectivo'
     mensajePago = `Perfecto, ${name} 🙌 Has seleccionado *efectivo al recibir*.
 \n💵 Tu pedido será entregado personalmente y podrás pagar en el momento de la entrega.${totalLine}`
@@ -100,18 +104,18 @@ ${empresaConfig.metodosPago.pagoMovil.cedula ? `🆔 Cédula: ${empresaConfig.me
 📄 Cuenta: ${empresaConfig.metodosPago.transferenciaBancaria.cuenta}  
 👤 Titular: ${empresaConfig.metodosPago.transferenciaBancaria.titular}${totalLine}${totalBsLine}
 \n🧾 Envía el comprobante por aquí cuando esté listo. 😉`
-  } else if (/\b3\b|zelle/.test(respuesta)) {
+  } else if (esZelle) {
     metodo = 'Zelle'
     mensajePago = `Perfecto, ${name} 🙌 Puedes pagar vía *Zelle*:
 \n📧 Correo: ${empresaConfig.metodosPago.zelle.correo}${totalLine}
 \n🧾 Luego de transferir, mándame el comprobante. 😉`
-  } else if (/\b4\b|binance/.test(respuesta)) {
+  } else if (esBinance) {
     metodo = 'Binance'
     mensajePago = `Perfecto, ${name} 🙌 Aquí los datos para *Binance (USDT/BUSD)*:
 \n📧 Correo: ${empresaConfig.metodosPago.binance.correo}${totalLine}
 \n🧾 Cuando completes la transacción, mándame el comprobante por aquí. 😉`
   } else {
-    return void await flowDynamic([
+    await flowDynamic([
       '❗ No logré identificar el método. Responde con una opción válida:',
       '',
       '1️⃣ Pago móvil',
@@ -120,6 +124,7 @@ ${empresaConfig.metodosPago.pagoMovil.cedula ? `🆔 Cédula: ${empresaConfig.me
       '4️⃣ Binance',
       '5️⃣ Efectivo'
     ])
+    return
   }
 
   await state.update({
@@ -145,8 +150,8 @@ ${empresaConfig.metodosPago.pagoMovil.cedula ? `🆔 Cédula: ${empresaConfig.me
 }
 
 export const paymentFlow = addKeyword('TOTAL_CONFIRMADO')
-  .addAction(async (ctx, tools) => pasoMetodoPago(ctx, tools))
-  .addAction(async (ctx, tools) => pasoProcesarMetodo(ctx, tools))
+  .addAction(pasoMetodoPago)
+  .addAction(pasoProcesarMetodo)
 
 export const paymentActions = {
   pasoMetodoPago,

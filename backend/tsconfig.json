@@ -23,14 +23,16 @@
       "@models/*": ["src/database/models/*"],
       "@types/*": ["src/types/*"],
       "@data/*": ["src/data/*"],
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@handlers/*": ["src/handlers/*"],
+      "@ocr/*": ["src/ocr/*"]
     }
   },
   "include": [
     "src/**/*",
     "index.ts",
     "global.d.ts",
-    "src/types/**/*"  // Asegúrate de que esto esté incluido
+    "src/types/**/*"
   ],
   "exclude": ["node_modules", "dist"]
 }

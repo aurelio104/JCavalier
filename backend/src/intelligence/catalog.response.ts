@@ -1,13 +1,13 @@
 import { detectProductByKeywords, getProductDescription } from './product.engine'
-import { empresaConfig } from '../config/empresaConfig';
+import { empresaConfig } from '../config/empresaConfig'
 
 /**
- * Genera una respuesta emocionalmente inteligente con el link del catálogo,
+ * Genera una respuesta clara y breve con el link del catálogo,
  * basada en las palabras clave del mensaje del usuario.
- * 
- * ⚠️ Este método debe ser invocado exclusivamente desde:
- * - `intentHandler.flow.ts` para intención comercial
- * - `aiResponder.ts` como fallback contextual
+ *
+ * ⚠️ Invocado desde:
+ * - `intentHandler.flow.ts`
+ * - `aiResponder.ts`
  */
 export function getCatalogResponse(name: string, text: string, lastSeenTimestamp?: number): string {
   const normalized = text.toLowerCase()
@@ -15,82 +15,49 @@ export function getCatalogResponse(name: string, text: string, lastSeenTimestamp
   const description = product ? getProductDescription(product) : null
 
   const saludo = !lastSeenTimestamp || Date.now() - lastSeenTimestamp > 60000
-    ? `¡${name}, qué gusto saludarte! 😊\n\n`
+    ? `¡Hola ${name}! 👋\n\n`
     : ''
 
-  // 📌 Respuestas especiales para palabras clave específicas
   if (/playa|sun set|verano/.test(normalized) && /conjunto|short/.test(normalized)) {
-    return `${saludo}☀️ ¡Qué bien que estés interesado en nuestros conjuntos de playa! ¿Te gustaría saber los precios de los conjuntos de playa en alguna talla o color específico? 
-
-Tenemos varias opciones frescas para el clima de Venezuela, incluyendo la colección *Sun Set*.
-
-Incluye camisas ligeras y shorts en colores como azul, gris, beige, rosa y negro.
+    return `${saludo}☀️ Tenemos conjuntos frescos ideales para clima playero, como la colección *Sun Set*.
 
 👉 ${empresaConfig.enlaces.catalogo}`
   }
 
   if (/camisa de vestir|camisas de lino|manga larga/.test(normalized)) {
-    return `${saludo}👔 Nuestra colección *Monarch linen* ofrece camisas de vestir manga larga, elaboradas en tela lino. Elegancia y frescura en cada modelo.
+    return `${saludo}👔 Nuestra colección *Monarch linen* tiene camisas elegantes de lino, manga larga.
 
 👉 ${empresaConfig.enlaces.catalogo}`
   }
 
   if (/conjunto.*(dama|caballero)|ropa deportiva|sport set/.test(normalized)) {
-    return `${saludo}💪 Tenemos conjuntos deportivos estilo oversize tanto para dama como caballero. Frescura, comodidad y actitud.
+    return `${saludo}💪 Contamos con conjuntos deportivos oversize para dama y caballero.
 
 👉 ${empresaConfig.enlaces.catalogo}`
   }
 
   const detalle = product && description
-    ? `✨ Parece que estás buscando *${product}*.
+    ? `✨ Parece que buscás *${product}*.
 ${description}`
-    : '🖤 Nuestra colección es versátil y con carácter. Camisas, conjuntos, pantalones y más... para que expreses quién eres.'
+    : '🖤 Tenemos camisas, conjuntos, pantalones y más estilos.'
 
-  const respuestaBase = `${saludo}${detalle}
+  const respuestaBase = `${saludo}${detalle}\n\n👉 ${empresaConfig.enlaces.catalogo}`
 
-🛍️ Puedes ver todos nuestros modelos, colores y tallas directamente en el catálogo:
-👉 ${empresaConfig.enlaces.catalogo}
-
-Si tienes un estilo en mente o algo que te gustaría ver, dime y te ayudo a encontrar lo ideal para ti. 😉`
-
-  // Cross-selling
   if (product === 'camisa') {
-    return `${respuestaBase}
-
-👖 También podrías combinarla con nuestros pantalones beige o negros.
-
-¿Querés que te sugiera un outfit completo? 😉`
+    return `${respuestaBase}\n\n👖 También podés combinarlas con nuestros pantalones sobrios.`
   }
 
   return respuestaBase
 }
 
-/**
- * Respuesta específica para usuarios que preguntan por camisas
- * ❌ No menciona precios explícitamente.
- */
 export function respondToShirtPrice(): string {
-  return `👕 ¡Claro! Las camisas ${empresaConfig.nombre} destacan por su diseño moderno, calidad premium y estilo atemporal.
+  return `👕 Las camisas ${empresaConfig.nombre} destacan por su estilo y calidad.
 
-Tonos clásicos como blanco y azul marino, además de opciones vibrantes como esmeralda y burdeos.
-
-🧥 Explora los modelos aquí:
-👉 ${empresaConfig.enlaces.catalogo}/camisas
-
-¿Tienes en mente algún estilo o color? Dímelo y te ayudo a elegir la ideal para ti. 😉`
+👉 Ver modelos: ${empresaConfig.enlaces.catalogo}/camisas`
 }
 
-/**
- * Respuesta específica para usuarios que preguntan por conjuntos
- * ❌ No menciona precios explícitamente.
- */
 export function respondToSetPrice(): string {
-  return `✨ Nuestros conjuntos están pensados para combinar estilo urbano con frescura playera 🏖️
+  return `✨ Nuestros conjuntos combinan frescura y estilo urbano.
 
-👕 Camisas + Shorts con cortes modernos, colores vibrantes como esmeralda, burdeos y más.
-
-🧥 Explora los conjuntos aquí:
-👉 ${empresaConfig.enlaces.catalogo}/conjuntos
-
-¿Tienes algún estilo o color en mente? Dímelo y te ayudo a elegir. 😉`
+👉 Ver conjuntos: ${empresaConfig.enlaces.catalogo}/conjuntos`
 }

@@ -6,7 +6,6 @@ import { analyzeEmotion, detectIntent, detectarPerfilDeCompra } from '@intellige
 import { Emotion, BotIntent, UserHistoryEntry, UserMemory } from '@schemas/UserMemory'
 import { empresaConfig } from '../config/empresaConfig'
 
-// Función para obtener el saludo adecuado según la hora del día
 function getGreeting(): string {
   const hour = new Date().getHours()
   if (hour < 12) return 'buenos días'
@@ -14,42 +13,28 @@ function getGreeting(): string {
   return 'buenas noches'
 }
 
-// Función para extraer el nombre del usuario del mensaje
 function extractName(msg: proto.IWebMessageInfo): string {
-  return (
+  const raw =
     msg.pushName ||
     msg.key.participant?.split('@')[0] ||
     msg.key.remoteJid?.split('@')[0] ||
     'amigo'
-  )
+
+  const clean = raw.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ ]/g, '').trim()
+  return clean.length > 0 ? clean : 'cliente'
 }
 
-// Función auxiliar para personalizar el mensaje según la emoción
-function getEmocionExtra(emotion: Emotion): string {
-  switch (emotion) {
-    case 'sad':
-      return 'Si necesitás algo, estoy aquí para ayudarte con cariño. 💛'
-    case 'frustrated':
-      return 'No te preocupes, te voy a ayudar paso a paso. 💪'
-    default:
-      return 'Contá conmigo para lo que necesités. ✨'
-  }
-}
-
-// Función para generar el mensaje de bienvenida con emoción
-function generateWelcomeMessage(name: string, greeting: string, isNew: boolean, emotion: Emotion): string {
-  const emocionExtra = getEmocionExtra(emotion)
-
+function generateWelcomeMessage(name: string, greeting: string, isNew: boolean): string {
   const newUserMessages = [
-    `¡Hola ${name}, ${greeting}! 🌟 Bienvenido a ${empresaConfig.nombre}. ${emocionExtra}`,
-    `¡Hola ${name}! ${greeting} y bienvenido a ${empresaConfig.nombre}. Si estás buscando algo especial, llegaste al lugar indicado. 🖤`,
-    `¡Qué gusto saludarte, ${name}! ${greeting} desde ${empresaConfig.nombre}. Cuéntame qué estás buscando y comenzamos este viaje de estilo.`
+    `Hola ${name}, ${greeting} 👋`,
+    `Bienvenido ${name} 👋`,
+    `Hola ${name} 👋`
   ]
 
   const returningUserMessages = [
-    `¡${name}, qué alegría tenerte de vuelta! ${greeting} 😊 ¿En qué puedo ayudarte hoy?`,
-    `¡Hola otra vez ${name}! Siempre es un placer saludarte. ${greeting}`,
-    `¡Bienvenido nuevamente, ${name}! Dime cómo puedo asistirte esta vez.`
+    `Hola ${name}, qué bueno verte.`,
+    `Hola ${name}, ¿en qué te ayudo hoy?`,
+    `Ey ${name}, bienvenido otra vez 👋`
   ]
 
   const messages = isNew ? newUserMessages : returningUserMessages
@@ -63,7 +48,6 @@ export async function handleWelcome(
   msg: proto.IWebMessageInfo
 ): Promise<boolean> {
   const normalized = text.toLowerCase().trim()
-
   const greetingWords = ['hola', 'buenas', 'hello', 'hi', 'hey', '👋', '😊', '🤗']
   const isGreetingLike = greetingWords.some(g => normalized.includes(g))
 
@@ -82,28 +66,29 @@ export async function handleWelcome(
 
   if (isGroup) {
     await sock.sendMessage(from, {
-      text: `¡Hola grupo! 👥 Soy el asistente de ${empresaConfig.nombre}. Escríbanme en privado si quieren ver el catálogo, productos o recibir recomendaciones personalizadas.
-
-También pueden explorar: ${empresaConfig.enlaces.catalogo}`
+      text: `Hola, soy el asistente de *${empresaConfig.nombre}*.  
+Podés escribirme por privado si querés ver productos o consultar el catálogo:  
+${empresaConfig.enlaces.catalogo}`
     })
     return true
   }
 
-  // ⏳ Evitar repetición si ya se saludó hace poco
   const lastShown = user?.ultimoWelcomeShown ? new Date(user.ultimoWelcomeShown).getTime() : 0
   const diffMinutes = (now - lastShown) / 60000
   if (diffMinutes < 5) {
-    console.log('⏳ Saludo reciente. Se omite.')
+    console.log('⏳ Saludo omitido por ser reciente.')
     return false
   }
 
-  const welcomeMessage = generateWelcomeMessage(name, greeting, isNew, emotion)
+  const welcomeMessage = generateWelcomeMessage(name, greeting, isNew)
   await sock.sendMessage(from, { text: welcomeMessage })
 
   if (isNew) {
     await sock.sendMessage(from, {
-      text: `🛍️ Podés comenzar mirando el catálogo completo aquí:
-${empresaConfig.enlaces.catalogo}`
+      text: `Aquí podés ver todo el catálogo actualizado:
+${empresaConfig.enlaces.catalogo}
+
+🖤 También podés preguntarme por camisas, conjuntos, pantalones o lo que estés buscando.`
     })
   }
 

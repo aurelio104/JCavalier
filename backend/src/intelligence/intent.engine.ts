@@ -1,11 +1,11 @@
 // ✅ src/intelligence/intent.engine.ts
 
-import { Emotion, BotIntent } from '@schemas/UserMemory';
-import { fuzzyIncludes } from '@utils/fuzzyMatch';
-import { empresaConfig } from '../config/empresaConfig'; // Importamos la configuración de la empresa
+import { Emotion, BotIntent } from '@schemas/UserMemory'
+import { fuzzyIncludes } from '@utils/fuzzyMatch'
+import { empresaConfig } from '../config/empresaConfig'
 
 /**
- * Normaliza un texto a minúsculas, sin tildes ni espacios extra
+ * Normaliza el texto eliminando tildes, espacios extra y pasando a minúsculas.
  */
 export function normalize(text: string): string {
   return text
@@ -13,130 +13,114 @@ export function normalize(text: string): string {
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim()
 }
 
 /**
- * Detecta la intención principal del usuario a partir del texto normalizado
- * Admite interacciones mixtas (español + inglés)
+ * Detecta la intención del usuario desde el texto normalizado.
  */
 export function detectIntent(text: string): BotIntent {
-  const normalized = normalize(text);
+  const normalized = normalize(text)
 
   // 🧠 Conversacionales
-  if (/\b(hola|buenas|saludos|hey|holi)\b/.test(normalized)) return 'greeting';
-  if (/\b(gracias|muy amable|perfecto|encantado|excelente servicio)\b/.test(normalized)) return 'thank_you';
-  if (/\b(chao|adios|nos vemos|hasta luego)\b/.test(normalized)) return 'goodbye';
-  if (/\b(no sirve|error|problema|defecto|fallo|malo|incompleto|inconveniente)\b/.test(normalized)) return 'complaint';
+  if (/\b(hola|buenas|saludos|hey|holi)\b/.test(normalized)) return 'greeting'
+  if (/\b(gracias|muy amable|perfecto|encantado|excelente servicio)\b/.test(normalized)) return 'thank_you'
+  if (/\b(chao|adios|nos vemos|hasta luego)\b/.test(normalized)) return 'goodbye'
+  if (/\b(no sirve|problema|defecto|fallo|malo|incompleto|inconveniente|error)\b/.test(normalized)) return 'complaint'
 
-  // 🛍️ Comerciales – producto, tipo, color, etc.
+  // 🛍️ Comerciales
   if (
-    /\b(catalogo|coleccion|ropa|modelos|conjunto|camisa|chamise|franela|pantalon|short|producto|prenda|vestimenta|oversize|set|dama|caballero|color|colores|tonos|ver ropa|ver modelos|outfit|look)\b/
+    /\b(catalogo|coleccion|ropa|modelos|conjunto|camisa|franela|pantalon|short|producto|prenda|oversize|set|dama|caballero|color|ver ropa|ver modelos|outfit|look)\b/
       .test(normalized)
-  ) return 'catalog';
+  ) return 'catalog'
 
   if (
     /\b(precio|costos|cuanto cuesta|cuanto valen|vale|cuesta|tarifa|cuanto es|valor de|coste|how much|price)\b/
       .test(normalized)
-  ) return 'price';
+  ) return 'price'
 
   if (
-    /\b(talla|tallas|medida|xs|s|m|l|xl|xxl|disponible en|hay talla|que tallas|size)\b/
+    /\b(talla|tallas|medida|xs|s|m|l|xl|xxl|hay talla|que tallas|size)\b/
       .test(normalized)
-  ) return 'size';
+  ) return 'size'
 
   if (
-    /\b(quiero esto|me gusta este|comprar|lo compro|agregar al carrito|confirmo pedido|deseo comprar|hago el pedido|lo llevo|quiero pedir|quiero ordenar|i want|buy)\b/
+    /\b(quiero esto|me gusta este|comprar|lo compro|agregar al carrito|confirmo pedido|hago el pedido|lo llevo|quiero pedir|quiero ordenar|buy)\b/
       .test(normalized)
-  ) return 'order';
+  ) return 'order'
 
   if (
     /\b(cuando llega|seguimiento|trackeo|estado del pedido|envio|en camino|donde esta|tracking|rastreo)\b/
       .test(normalized)
-  ) return 'tracking';
+  ) return 'tracking'
 
-  // ❓ Preguntas generales
+  // ❓ Consultas generales
   if (
     /\b(cuanto mide|cuantas unidades|como funciona|puedo|hay stock|dudas|me explicas|informacion|how does it work)\b/
       .test(normalized)
-  ) return 'question';
+  ) return 'question'
 
-  // 🤷 Intención desconocida
-  return 'other';
+  return 'other'
 }
 
 /**
- * Analiza la emoción del mensaje del usuario
+ * Detecta emociones básicas en texto del usuario.
+ * Ideal para flujos rápidos que no requieren `detectEmotion()`.
  */
 export function analyzeEmotion(text: string): Emotion {
-  const normalized = normalize(text);
+  const normalized = normalize(text)
 
-  if (
-    /(😍|feliz|genial|excelente|me encanta|emocionado|wow|gracias|encantado|super|contento|increible|great|perfect)/.test(normalized)
-  ) {
-    return 'positive';
+  if (/(😍|genial|excelente|me encanta|emocionado|gracias|super|contento|perfect)/.test(normalized)) {
+    return 'positive'
   }
 
-  if (
-    /(😢|molesto|odio|terrible|no sirve|frustrado|no me gusta|decepcionado|enojado|horrible|mal|pésimo|sad|depressed|frustration)/.test(normalized)
-  ) {
-    return 'negative';
+  if (/(😢|molesto|odio|frustrado|decepcionado|enojado|mal|pésimo|horrible|no sirve|terrible)/.test(normalized)) {
+    return 'negative'
   }
 
-  return 'neutral';
+  return 'neutral'
 }
 
 /**
- * Detecta si el mensaje pregunta específicamente por precios de camisas o conjuntos
- * ⚠️ Solo debe ser utilizado dentro de `intentHandler.flow.ts` para evitar duplicaciones.
+ * Evalúa si se trata de una pregunta directa sobre precios.
+ * ⚠️ Usar dentro de `intentHandler.flow.ts`.
  */
 export function isPriceInquiry(message: string): boolean {
-  const normalized = normalize(message);
+  const normalized = normalize(message)
 
   const fuzzyTerms = [
     'cuanto cuestan las camisas',
     'precio camisas',
-    'precio de camisa',
-    'cuanto cuesta camisa',
-    'camisas cuanto valen',
-    'camisas jcavalier precio',
-    'quiero saber el precio de las camisas',
     'precio conjuntos',
     'cuanto cuestan los conjuntos',
-    'cuanto valen los conjuntos',
     'conjuntos de playa precio',
-    'quiero saber el precio de los conjuntos',
-    'cuanto cuesta un conjunto jcavalier',
     'precio outfit',
-    'precio set',
-    'precio look playa',
+    'precio look',
     'set old money cuanto cuesta',
     'how much is the shirt',
-    'how much is the set',
-    'price of beach outfits',
-    'how much for the shirts'
-  ];
+    'price of beach outfits'
+  ]
 
-  return fuzzyIncludes(normalized, fuzzyTerms);
+  return fuzzyIncludes(normalized, fuzzyTerms)
 }
 
 /**
- * Clasifica el perfil de comportamiento del usuario
+ * Detecta perfil de usuario: explorador, comprador directo o indeciso.
  */
 export function detectarPerfilDeCompra(text: string): 'explorador' | 'comprador directo' | 'indeciso' {
-  const normalized = normalize(text);
+  const normalized = normalize(text)
 
-  if (/\b(quiero esto|lo compro|confirmo pedido|hago el pedido|lo llevo|comprar|i want|buy)\b/.test(normalized)) {
-    return 'comprador directo';
+  if (/\b(quiero esto|lo compro|confirmo pedido|hago el pedido|comprar|buy)\b/.test(normalized)) {
+    return 'comprador directo'
   }
 
-  if (/\b(camisa|conjunto|pantalon|catálogo|colección|ver modelos|outfit|ropa)\b/.test(normalized)) {
-    return 'explorador';
+  if (/\b(catálogo|colección|camisa|conjunto|ropa|ver modelos|outfit)\b/.test(normalized)) {
+    return 'explorador'
   }
 
-  if (/\b(como funciona|hay stock|dudas|me explicas|que incluye|puedo pagar con)\b/.test(normalized)) {
-    return 'indeciso';
+  if (/\b(como funciona|hay stock|me explicas|que incluye|puedo pagar con)\b/.test(normalized)) {
+    return 'indeciso'
   }
 
-  return 'explorador';
+  return 'explorador'
 }

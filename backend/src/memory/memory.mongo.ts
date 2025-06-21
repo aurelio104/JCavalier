@@ -183,3 +183,19 @@ export async function saveConversationToMongo(
     new: true
   })
 }
+
+/** 🧠 Guardar feedback de usuario en una colección aparte */
+export async function saveFeedbackToMongo(data: {
+  userId: string
+  message: string
+  emotion: Emotion
+  origin: string
+  timestamp: Date
+}): Promise<void> {
+  try {
+    const collection = UserMemoryModel.db.collection('feedback')
+    await collection.insertOne(data)
+  } catch (error) {
+    console.error('[saveFeedbackToMongo] Error al guardar feedback:', error)
+  }
+}

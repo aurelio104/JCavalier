@@ -2,7 +2,7 @@ import { OpenAI } from 'openai'
 import { buildUserContext } from './context.generator'
 import { detectProductByKeywords } from './product.engine'
 import { getCatalogResponse } from './catalog.response'
-import { empresaConfig } from '../config/empresaConfig';
+import { empresaConfig } from '../config/empresaConfig'
 import { getUser } from '@memory/memory.mongo'
 import { Emotion } from '@schemas/UserMemory'
 
@@ -21,7 +21,7 @@ export async function generatePersonalizedReply(userId: string, message: string)
   const productDetected = detectProductByKeywords(normalized)
   if (productDetected) {
     const name = userId.split('@')[0] || 'amigo'
-    return getCatalogResponse(name, message)  // Responder con el catálogo de productos
+    return getCatalogResponse(name, message)
   }
 
   // Obtener contexto completo del usuario
@@ -32,42 +32,39 @@ export async function generatePersonalizedReply(userId: string, message: string)
   const perfil = user?.profileType || 'explorador'
   const frecuencia = user?.frequency || 'ocasional'
 
-  const tonoFrecuencia = frecuencia === 'recurrente' ? 'como siempre, gracias por volver' : ''
-  const emocionesCriticas: Emotion[] = ['negative'] // en caso de usar clasificación refinada
+  const tonoFrecuencia = frecuencia === 'recurrente' ? '¡Gracias por volver!' : ''
+  const emocionesCriticas: Emotion[] = ['negative']
 
   const sugerenciaEmpatica = emocionesCriticas.includes(emotion)
-    ? 'Si estás teniendo un mal momento, estoy aquí para ayudarte.'
+    ? 'Estoy aquí para ayudarte en lo que necesites.'
     : ''
 
   const prompt = `
-Eres un estilista digital empático de ${empresaConfig.nombre}, una marca de moda disruptiva.
+Eres un asesor de ${empresaConfig.nombre}, una marca de moda venezolana. Tu estilo es breve, directo, cordial y adaptado al español latino de Venezuela.
 
-Tu tono es cálido, directo y adaptado emocionalmente.
-
-• El usuario se siente: *${emotion}*
-• Su perfil es: *${perfil}*
+• Estado emocional: *${emotion}*
+• Perfil: *${perfil}*
 • Frecuencia de compra: *${frecuencia}*
 
 ${tonoFrecuencia} ${sugerenciaEmpatica}
 
-Contexto del usuario:
+Contexto útil:
 ${context}
 
 Mensaje recibido:
 "${message}"
 
-Tu respuesta (usa español latino y asegúrate de que sea adecuada para el tono emocional, la frecuencia del usuario y la cultura venezolana. Sé directo, empático y menciona productos o servicios si es útil):`
+Tu respuesta (una sola, clara y corta, sin explicaciones ni repeticiones. Si aplica, ofrece ayuda concreta, productos o enlaces):`
 
-  // Solicitar respuesta a OpenAI
   const completion = await openai.chat.completions.create({
     messages: [{ role: 'user', content: prompt }],
     model: 'gpt-4o',
-    temperature: 0.85,
-    max_tokens: 120
+    temperature: 0.7,
+    max_tokens: 100
   })
 
   return (
     completion.choices?.[0]?.message?.content?.trim() ||
-    `Disculpa, ¿podrías contarme un poco más para ayudarte mejor?`
+    `¿Querés contarme un poco más para poder ayudarte mejor?`
   )
 }

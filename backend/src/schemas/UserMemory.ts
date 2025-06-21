@@ -28,7 +28,6 @@ export interface UserHistoryEntry {
 
 /** 🧠 Memoria principal de un usuario */
 export interface UserMemory {
-  /** 🆔 Identificador único del usuario (MongoDB) */
   _id: string
 
   name: string
@@ -74,6 +73,12 @@ export interface UserMemory {
 
   /** 🤖 Contacto real del cliente para notificaciones desde el bot */
   contactoCliente?: string
+
+  /** 🔎 Colección probablemente mencionada (ej: "Sun Set" por "conjuntos de playa") */
+  probableCollection?: string
+
+  /** 📌 Número de intentos sin detectar intención útil */
+  intentosSinIntencion?: number
 }
 
 /** 🧠 Versión estricta con todos los campos requeridos */

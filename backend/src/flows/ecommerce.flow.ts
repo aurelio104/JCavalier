@@ -16,19 +16,26 @@ export const ecommerceFlow = addKeyword('welcome')
   .addAction(async (ctx: FlowFnProps['ctx'], { flowDynamic, state, gotoFlow }) => {
     const { body: text, pushName, from } = ctx
     const normalizedText = text.toLowerCase().trim()
-
     const name = pushName || from.split('@')[0]
     const intent: BotIntent = detectIntent(normalizedText)
     const emotion: Emotion = analyzeEmotion(normalizedText)
-
     const user = await state.getMyState()
+    const probableCollection = user?.tags?.includes('tag_sunset') ? 'Sun Set' : null
+
+    if (probableCollection === 'Sun Set') {
+      await flowDynamic([
+        `☀️ Tenemos conjuntos frescos ideales para clima playero, como la colección *Sun Set*.`,
+        `👉 ${empresaConfig.enlaces.catalogo}`
+      ])
+      return
+    }
 
     if (intent === 'catalog') {
       await flowDynamic([
-        `🖤 ¡Bienvenido a *${empresaConfig.nombre}*!`,
-        '✨ Aquí podés ver nuestra colección completa:',
-        `🌐 ${empresaConfig.enlaces.catalogo}`,
-        'Si estás buscando algo específico, contame qué te gustaría ver y con gusto te ayudo. 😉'
+        `🖤 Bienvenido a *${empresaConfig.nombre}*.`,
+        `📌 Acá podés ver el catálogo completo:
+${empresaConfig.enlaces.catalogo}`,
+        'Si ya tenés algo en mente, escribime el producto o estilo que buscás.'
       ])
       return
     }
@@ -39,32 +46,32 @@ export const ecommerceFlow = addKeyword('welcome')
 
         if (!resultado.esPedidoValido) {
           await flowDynamic([
-            '⚠️ No pude interpretar correctamente tu pedido. ¿Podés reenviarlo o escribirlo nuevamente, por favor? 🙏'
+            '⚠️ No pude interpretar bien el pedido. ¿Podés reenviarlo o escribirlo de nuevo?'
           ])
           return
         }
 
         const resumen = resultado.productos.map((p: DetectedProduct, i: number) =>
           `🛍️ Producto ${i + 1}:
-•⁠ Colección: ${p.coleccion}
-•⁠ Nombre: ${p.nombre}
-•⁠ Talla: ${p.talla}
-•⁠ Color: ${p.color}
-•⁠ Precio: $${p.precio}`
+• Colección: ${p.coleccion}
+• Nombre: ${p.nombre}
+• Talla: ${p.talla}
+• Color: ${p.color}
+• Precio: $${p.precio}`
         ).join('\n\n')
 
         const total = resultado.productos.reduce((sum, p) => sum + parseFloat(p.precio), 0)
 
-        // 🧠 Guardar en memoria temporal y MongoDB
+        // 🧠 Guardamos en memoria temporal + Mongo
         const memoriaParcial: Partial<UserMemory> = {
           name,
-          productos: resultado.productos.map((p) => p.nombre),
+          productos: resultado.productos.map(p => p.nombre),
           total: total.toFixed(2),
           ultimaIntencion: 'order',
           fechaUltimaCompra: Date.now(),
-          needsHuman: false,
           emotionSummary: emotion,
           flujoActivo: 'payment',
+          needsHuman: false,
           ultimoIntentHandled: {
             intent: 'order',
             timestamp: Date.now()
@@ -75,30 +82,29 @@ export const ecommerceFlow = addKeyword('welcome')
         await state.update(memoriaParcial)
 
         await flowDynamic([
-          `✨ ¡Hermosa elección, ${name}! Aquí tenés el resumen de tu pedido:\n\n${resumen}`,
-          `💰 *Total a pagar: $${total.toFixed(2)}*`,
-          '¿Cómo preferís realizar el pago?',
+          `✅ Pedido registrado:\n\n${resumen}`,
+          `💰 *Total: $${total.toFixed(2)}*`,
+          '¿Cómo preferís pagar?',
           '1️⃣ *Pago móvil*',
-          '2️⃣ *Transferencia bancaria*',
+          '2️⃣ *Transferencia*',
           '3️⃣ *Zelle*',
           '4️⃣ *Binance*',
-          '5️⃣ *Efectivo* (al recibir el producto)',
-          '🛒 Dirigiéndote al pago...'
+          '5️⃣ *Efectivo* (contra entrega)'
         ])
 
         return await gotoFlow(paymentFlow)
       }
 
       await flowDynamic([
-        '📝 Para ayudarte mejor, podés escribir tu pedido así:',
-        'Ejemplo: "Colección: Sun Set\nProducto: Camisa\nTalla: M\nColor: Negro\nPrecio: 25"',
-        'O también podés contarme qué estás buscando: estilo, color, talla… ¡y lo busco por vos! 🕵️‍♀️'
+        '📝 Si querés hacer un pedido, podés escribirlo así:',
+        'Ejemplo:\nColección: Monarch\nProducto: Pantalón\nTalla: M\nColor: Beige\nPrecio: 28',
+        'O simplemente contame qué buscás: estilo, color, talla… y te ayudo 😉'
       ])
       return
     }
 
     await flowDynamic([
-      '👋 Estoy aquí para ayudarte con cualquier consulta sobre nuestro catálogo o productos.',
-      'Si estás buscando algo específico, contame qué te gustaría ver y con gusto te ayudo. 😉'
+      '👋 Estoy para ayudarte con dudas o pedidos.',
+      'Podés ver el catálogo o decirme qué producto querés ver.'
     ])
   })

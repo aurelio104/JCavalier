@@ -1,12 +1,12 @@
 // ✅ src/intelligence/emotion.flow.ts
 
-import { OpenAI } from 'openai';
-import dotenv from 'dotenv';
-import { empresaConfig } from '../config/empresaConfig';
+import { OpenAI } from 'openai'
+import dotenv from 'dotenv'
+import { empresaConfig } from '../config/empresaConfig'
 
-dotenv.config();
+dotenv.config()
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 export type EmotionType =
   | 'positivo'
@@ -15,16 +15,17 @@ export type EmotionType =
   | 'frustración'
   | 'decepción'
   | 'tristeza'
-  | 'alegría';
+  | 'alegría'
 
 /**
- * Clasifica el tono emocional de un mensaje usando OpenAI.
- * ⚠️ Solo debe usarse en contextos donde se requiera mayor precisión emocional.
- * Para el flujo normal del bot, usar `analyzeEmotion()` de `intent.engine.ts`.
+ * Detecta el tono emocional del mensaje usando OpenAI.
+ * ⚠️ Uso exclusivo en flujos que requieran alta sensibilidad emocional.
+ * Para análisis rápidos usar `analyzeEmotion()` de `intent.engine.ts`.
  */
 export async function detectEmotion(text: string): Promise<EmotionType> {
   const prompt = `
-Clasificá el tono emocional del siguiente mensaje de WhatsApp en uno de los siguientes estados emocionales:
+Clasificá el tono emocional del siguiente mensaje de WhatsApp como una sola palabra:
+
 - positivo
 - neutral
 - negativo
@@ -33,20 +34,22 @@ Clasificá el tono emocional del siguiente mensaje de WhatsApp en uno de los sig
 - tristeza
 - alegría
 
-Mensaje: "${text}"
+Solo responde una palabra sin explicación, considerando contexto emocional venezolano y tono de marca de ${empresaConfig.nombre}.
 
-⚠️ Responde solo con una palabra exacta, sin explicación. El tono debe ser considerado dentro del contexto cultural de Venezuela y de la empresa ${empresaConfig.nombre}.
-`
+Mensaje:
+"${text}"
+  `.trim()
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-3.5-turbo',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0
-  });
+  })
 
-  const emotion = completion.choices[0].message.content?.toLowerCase().trim() as EmotionType;
+  const raw = completion.choices?.[0]?.message?.content?.toLowerCase().trim()
+  const emotion = raw as EmotionType
 
-  return [
+  const valid: EmotionType[] = [
     'positivo',
     'neutral',
     'negativo',
@@ -54,23 +57,23 @@ Mensaje: "${text}"
     'decepción',
     'tristeza',
     'alegría'
-  ].includes(emotion)
-    ? emotion
-    : 'neutral';
+  ]
+
+  return valid.includes(emotion) ? emotion : 'neutral'
 }
 
 /**
- * Opcional: función para generar respuestas proactivas basadas en emociones detectadas.
+ * Genera una respuesta empática opcional según emoción detectada.
  */
 export function respuestaEmocionalProactiva(emocion: EmotionType): string | null {
   switch (emocion) {
     case 'tristeza':
-      return '💙 Lamentamos que te sientas así. ¿Hay algo que pueda hacer para ayudarte mejor?';
+      return '💙 Lamento que te sientas así. ¿Querés que lo resolvamos juntos?'
     case 'frustración':
-      return '😓 Siento que estés teniendo dificultades. Estoy aquí para ayudarte en lo que necesites.';
+      return '😓 Siento lo que pasó. Estoy aquí para ayudarte ahora mismo.'
     case 'decepción':
-      return '🙏 Lamentamos no haber cumplido tus expectativas. ¿Qué podemos mejorar para ti?';
+      return '🙏 No fue lo que esperabas. Decime cómo podemos mejorar para vos.'
     default:
-      return null;
+      return null
   }
 }

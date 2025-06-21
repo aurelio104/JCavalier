@@ -4,10 +4,10 @@
   "description": "Bot inteligente para WhatsApp con AI, memoria y pagos.",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "concurrently \"ts-node -r tsconfig-paths/register server.ts\" \"ts-node -r tsconfig-paths/register index.ts\"",
+    "dev": "dotenv -e .env -- concurrently \"ts-node -r tsconfig-paths/register server.ts\" \"ts-node -r tsconfig-paths/register index.ts\"",
     "start:local": "dotenv -e .env -- concurrently \"ts-node -r tsconfig-paths/register server.ts\" \"ts-node -r tsconfig-paths/register index.ts\"",
-    "build": "tsup index.ts --format cjs --dts --out-dir dist --target node20 --clean",
     "start": "NODE_ENV=production node -r tsconfig-paths/register dist/index.js",
+    "build": "tsup index.ts --format cjs --dts --out-dir dist --target node20 --clean",
     "test": "echo \"No hay pruebas definidas aún\" && exit 1"
   },
   "keywords": [

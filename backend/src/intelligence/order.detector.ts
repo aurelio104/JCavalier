@@ -16,6 +16,10 @@ export interface OrderDetectionResult {
   mensajeAlCliente?: string
 }
 
+/**
+ * Extrae información estructurada desde un mensaje de texto tipo pedido.
+ * Reconoce campos: colección, producto, talla, color, precio, y datos de vuelo (si aplica).
+ */
 export function parseOrderMessage(message: string): OrderDetectionResult {
   const lines = message
     .replace(/%0A/g, '\n')
@@ -60,27 +64,24 @@ export function parseOrderMessage(message: string): OrderDetectionResult {
   }
 
   if (Object.keys(currentProduct).length > 0) {
-    errores.push(`Producto incompleto al final del mensaje: ${JSON.stringify(currentProduct)}`);
+    errores.push(`⚠️ Producto incompleto al final del mensaje: ${JSON.stringify(currentProduct)}`);
   }
 
   const esPedidoValido = productos.length > 0 && errores.length === 0;
 
-  const resultado: OrderDetectionResult = {
+  return {
     productos,
     esPedidoValido,
-    errores: errores.length > 0 ? errores : undefined
+    errores: errores.length > 0 ? errores : undefined,
+    mensajeAlCliente: errores.length > 0
+      ? '⚠️ Tu pedido está incompleto. Por favor, indícame *nombre del producto*, *talla*, *color* y *precio* para procesarlo correctamente.'
+      : undefined
   };
-
-  if (errores.length > 0) {
-    return {
-      ...resultado,
-      mensajeAlCliente: '⚠️ Parece que tu pedido está incompleto. ¿Podrías decirme la talla, color y nombre del producto para ayudarte?'
-    };
-  }
-
-  return resultado;
 }
 
+/**
+ * Detecta si el mensaje proviene del sitio web oficial o contiene formato de pedido.
+ */
 export function contienePedidoDesdeWeb(message: string): boolean {
   return (
     message.includes('🧾 Pedido confirmado desde el sitio JCAVALIER') ||

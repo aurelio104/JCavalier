@@ -1,52 +1,60 @@
+// ✅ src/intelligence/product.response.ts
+
 import { empresaConfig } from '../config/empresaConfig';
 import { UserMemory } from '@schemas/UserMemory';
 
 export function generarRespuestaProducto(name: string, text: string, user?: UserMemory): string | null {
   const lower = text.toLowerCase();
 
-  // Respuesta empática si hubo frustración
+  const saludo = user?.frequency === 'recurrente'
+    ? `Hola ${name}, ¡qué bueno tenerte otra vez! 👋`
+    : `Hola ${name} 👋`;
+
   if (user?.emotionSummary === 'negative') {
-    return `¡Hola ${name}! 🖤 Lamento si tuviste una mala experiencia antes. Estoy aquí para ayudarte a elegir lo mejor.`;
+    return `Hola ${name}. 🖤 Si algo no fue como esperabas, estoy aquí para ayudarte.`;
   }
 
-  // Mensaje personalizado si es frecuente
-  const saludoFrecuente = user?.frequency === 'recurrente'
-    ? `¡Hola ${name}! 😊 Como siempre, un gusto ayudarte.`
-    : `¡Hola ${name}! 😊`;
+  const responder = (mensaje: string, key: keyof typeof empresaConfig.colecciones) =>
+    `${saludo} ${mensaje}\n👉 ${empresaConfig.colecciones[key].link}`;
 
-  // Detectamos si se menciona 'camisa' o 'camisas'
-  if (lower.includes('camisa') || lower.includes('camisas')) {
-    const collection = empresaConfig.colecciones['Sun Set'];
-    return `${saludoFrecuente} 👕 Veo que estás interesado en nuestras camisas.  
-Actualmente tenemos colores clásicos como blanco, azul marino y negro,  
-así como tonos vibrantes como rojo burdeos, verde esmeralda y más.
-
-🌐 Podés ver toda la colección aquí: ${collection.link}
-
-Si me contás qué estilo te gusta, te puedo ayudar a elegir 😉`;
+  if (/camisa|manga corta|manga larga/.test(lower)) {
+    return responder('Camisas sobrias y frescas para toda ocasión.', 'Monarch linen');
   }
 
-  // Detectamos si se menciona 'pantalón' o 'pantalones'
-  if (lower.includes('pantalon') || lower.includes('pantalones')) {
-    const collection = empresaConfig.colecciones['Monarch linen'];
-    return `${saludoFrecuente} 👖 ¡Los pantalones JCAVALIER son un clásico!  
-Contamos con tonos como negro, gris plomo, beige y oliva militar.
-
-🌐 Podés verlos todos aquí: ${collection.link}
-
-Decime si preferís un estilo más elegante, urbano o relajado 😎`;
+  if (/pantalon|pantalones|jeans/.test(lower)) {
+    return responder('Pantalones cómodos y con estilo urbano.', 'Set Diamond estilo old money');
   }
 
-  // Detectamos si se menciona 'franela' o 'franelas'
-  if (lower.includes('franela') || lower.includes('franelas')) {
-    const collection = empresaConfig.colecciones['Sun Set'];
-    return `${saludoFrecuente} 🧥 Las franelas JCAVALIER combinan comodidad y actitud.  
-Tenemos colores suaves como blanco hueso, rosado palo y celeste,  
-y tonos intensos como negro, rojo vino y azul eléctrico.
+  if (/franela|playera|t-shirt/.test(lower)) {
+    return responder('Franelas suaves con corte actual.', 'Franela Imperial estilo Old money');
+  }
 
-🌐 Miralas acá: ${collection.link}
+  if (/conjunto.*dama/.test(lower)) {
+    return responder('Conjuntos deportivos para dama, cómodos y con estilo.', 'Gold Sport Set Dama');
+  }
 
-Si me contás qué te gusta, te muestro opciones 😉`;
+  if (/conjunto.*caballero/.test(lower)) {
+    return responder('Conjuntos deportivos para caballero, prácticos y frescos.', 'Gold Sport Set Caballero');
+  }
+
+  if (/short|bermuda/.test(lower)) {
+    return responder('Shorts ideales para días cálidos.', 'Set Diamond estilo old money');
+  }
+
+  if (/chemise/.test(lower)) {
+    return responder('Chemises elegantes con tela tejida suave.', 'Chemise Imperial estilo Old money');
+  }
+
+  if (/ropa de playa|outfit de playa|sun set/.test(lower)) {
+    return responder('Looks tropicales y relajados perfectos para clima playero.', 'Sun Set');
+  }
+
+  if (/cubana/.test(lower)) {
+    return responder('Camisas cubanas con aire tropical y corte relajado.', 'Camisas Cubanas');
+  }
+
+  if (/oversize|gladiador/.test(lower)) {
+    return responder('Merch oversize con actitud y diseño bold.', 'Merch Oversize Gladiador');
   }
 
   return null;

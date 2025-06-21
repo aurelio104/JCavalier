@@ -11,11 +11,9 @@ import { empresaConfig } from '../config/empresaConfig'
 import { transcribirAudio } from '@utils/audio.transcriber'
 
 function buscarProductosPorKeywords(keywords: string): string[] {
-  const productosRelacionados = Object.entries(empresaConfig.colecciones)
+  return Object.entries(empresaConfig.colecciones)
     .filter(([_, product]) => product.keywords.some(keyword => keywords.includes(keyword)))
     .map(([productName, product]) => `${productName} - $${product.price} - Ver más: ${product.link}`)
-
-  return productosRelacionados
 }
 
 const removeAccents = (str: string): string =>
@@ -29,7 +27,8 @@ export async function handleIntentRouter(
 ): Promise<boolean> {
   let normalized = text.toLowerCase().trim()
   const now = Date.now()
-  const name = msg.pushName || from.split('@')[0]
+  const rawName = msg.pushName || from.split('@')[0]
+  const name = rawName.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ ]/g, '').trim() || 'cliente'
 
   const isAudio = !!msg.message?.audioMessage
   if (isAudio) {
@@ -40,10 +39,8 @@ export async function handleIntentRouter(
 
     try {
       normalized = await transcribirAudio(tempAudioPath)
-    } catch (e) {
-      await sock.sendMessage(from, {
-        text: '❌ No pude entender tu nota de voz. ¿Podés intentar escribirlo por texto, por favor?'
-      })
+    } catch {
+      await sock.sendMessage(from, { text: '❌ No entendí tu nota de voz. ¿Podés escribirlo?' })
       return true
     } finally {
       await fs.unlink(tempAudioPath)
@@ -54,7 +51,6 @@ export async function handleIntentRouter(
   const lastSeen = user?.lastSeen ?? 0
   const saludoReciente = now - lastSeen < 2 * 60 * 1000
 
-  // 🔐 Bloqueo si hay un flujo activo como delivery, excepto si el mensaje contiene intención válida para delivery
   const flujoActivo = user?.flujoActivo
   const pasoEntrega = user?.pasoEntrega ?? 0
   const excepcionesDelivery = ['retiro personal', 'delivery', 'encomienda']
@@ -63,23 +59,24 @@ export async function handleIntentRouter(
     flujoActivo === 'delivery' &&
     pasoEntrega > 0 &&
     !excepcionesDelivery.some(k => normalized.includes(k))
-  ) {
-    console.log(`[INTERRUPCIÓN BLOQUEADA] Usuario en flujo "${flujoActivo}" - Paso ${pasoEntrega}. Intención ignorada.`)
-    return false
-  }
+  ) return false
 
-  const intent: BotIntent = detectIntent(normalized)
+  let intent: BotIntent = detectIntent(normalized)
   const emotion: Emotion = analyzeEmotion(normalized)
   const detectedProduct = detectProductByKeywords(normalized)
+
+  // 🔍 Filtro específico: "conjunto de playa" → Sun Set
+  let probableCollection = user?.tags?.includes('probable_sun_set') ? 'Sun Set' : ''
+  if (normalized.includes('conjunto') && normalized.includes('playa')) {
+    intent = 'price'
+    probableCollection = 'Sun Set'
+  }
 
   const handledRecently =
     user?.ultimoIntentHandled?.intent === intent &&
     now - user.ultimoIntentHandled.timestamp < 3 * 60 * 1000
 
-  if (handledRecently) {
-    console.log(`⏳ Intención "${intent}" manejada recientemente. Se omite.`)
-    return true
-  }
+  if (handledRecently) return true
 
   const historyEntry: UserHistoryEntry = {
     timestamp: now,
@@ -88,6 +85,8 @@ export async function handleIntentRouter(
     emotion,
     context: 'entrada'
   }
+
+  const intentosSinIntencion = (user?.tags?.includes('sin_intencion_1') ? 1 : 0)
 
   const updatedUser: UserMemory = {
     ...(user || {
@@ -104,44 +103,62 @@ export async function handleIntentRouter(
     ultimaIntencion: intent,
     history: [...(user?.history || []), historyEntry],
     emotionSummary: emotion,
-    ultimoIntentHandled: {
-      intent,
-      timestamp: now
-    }
+    ultimoIntentHandled: { intent, timestamp: now }
   }
 
+  const tagsSet = new Set([...(user?.tags || [])])
+  if (probableCollection === 'Sun Set') tagsSet.add('probable_sun_set')
+  if (!['greeting', 'catalog', 'price', 'size', 'order', 'question'].includes(intent)) {
+    tagsSet.add('sin_intencion_1')
+  } else {
+    tagsSet.delete('sin_intencion_1')
+  }
+  updatedUser.tags = Array.from(tagsSet)
+
   if (normalized === 'sí' || normalized === 'si' || normalized.includes('quiero promociones')) {
-    updatedUser.tags = Array.from(new Set([...(user?.tags || []), 'suscrito_promociones']))
+    updatedUser.tags = Array.from(new Set([...updatedUser.tags, 'suscrito_promociones']))
     await saveUser(updatedUser)
-    await sock.sendMessage(from, {
-      text: `✅ ¡Perfecto, ${name}! Quedás suscrito para recibir *promociones y novedades* por WhatsApp. ✨🖤`
-    })
+    await sock.sendMessage(from, { text: `✅ Suscrito a promociones, ${name}.` })
     return true
   }
 
   await saveUser(updatedUser)
 
   const isGreeting = intent === 'greeting'
-  const isComercialIntent =
-    ['catalog', 'price', 'size', 'order'].includes(intent) ||
-    (isGreeting && detectedProduct)
+  const isComercialIntent = ['catalog', 'price', 'size', 'order'].includes(intent)
 
-  if (isGreeting && !detectedProduct) {
-    return await handleWelcome(text, sock, from, msg)
-  }
+  if (isGreeting) {
+    await handleWelcome(text, sock, from, msg)
 
-  if (isComercialIntent && !saludoReciente) {
-    if (intent === 'price' || detectedProduct) {
+    if (detectedProduct) {
       const productosRelacionados = buscarProductosPorKeywords(normalized)
       if (productosRelacionados.length > 0) {
         await sock.sendMessage(from, {
-          text: `Aquí tienes algunos productos relacionados con tu consulta sobre precios:\n\n${productosRelacionados.join('\n\n')}`
+          text: `🛍️ Mira esto:\n${productosRelacionados.join('\n\n')}`
+        })
+      }
+    }
+    return true
+  }
+
+  if (isComercialIntent && !saludoReciente) {
+    if (intent === 'price' || detectedProduct || probableCollection) {
+      if (probableCollection === 'Sun Set') {
+        await sock.sendMessage(from, {
+          text: `☀️ Tenemos conjuntos frescos ideales para clima playero, como la colección *Sun Set*.
+👉 ${empresaConfig.enlaces.catalogo}`
+        })
+        return true
+      }
+
+      const productosRelacionados = buscarProductosPorKeywords(normalized)
+      if (productosRelacionados.length > 0) {
+        await sock.sendMessage(from, {
+          text: productosRelacionados.join('\n\n')
         })
         return true
       } else {
-        await sock.sendMessage(from, {
-          text: `No pude encontrar productos específicos relacionados con tu consulta. ¿Te gustaría ver nuestra colección completa?`
-        })
+        await sock.sendMessage(from, { text: `No encontré productos relacionados.` })
         return true
       }
     }
@@ -152,42 +169,42 @@ export async function handleIntentRouter(
 
   if (intent === 'tracking') {
     await sock.sendMessage(from, {
-      text: `📦 Si ya hiciste un pedido y quieres saber el estado, indícame tu número de orden o tu nombre completo. Estoy aquí para ayudarte.`
+      text: `📦 Para rastrear tu pedido, indícame tu número de orden o nombre completo.`
     })
     return true
   }
 
   if (intent === 'complaint') {
-    const respuesta = emotion === 'frustrated'
-      ? '😣 Veo que esto te ha molestado. Estoy aquí para solucionarlo.'
-      : '😔 Lamento el inconveniente. Cuéntame más y lo resolvemos.'
-    await sock.sendMessage(from, { text: respuesta })
+    await sock.sendMessage(from, {
+      text: emotion === 'frustrated'
+        ? '😣 Lo resolvemos enseguida.'
+        : '😔 Te ayudo con eso.'
+    })
     return true
   }
 
   if (intent === 'thank_you') {
     await sock.sendMessage(from, {
-      text: `¡Con gusto! Gracias a ti por confiar en *${empresaConfig.nombre}*. 🖤 Si necesitas algo más, aquí estoy.`
-    })
+      text: `¡Gracias por tu confianza en *${empresaConfig.nombre}*!` })
     return true
   }
 
   if (intent === 'question') {
     await sock.sendMessage(from, {
-      text: `💬 ¿Qué deseas saber? Aquí tienes opciones para guiarte:
+      text: `💬 ¿Qué querés saber?
 
-📦 *Envíos*
-🧾 *Pagos*
-📍 *Ubicación*
-📐 *Tallas*
-💬 *Otro*`
+📦 Envíos
+🧾 Pagos
+📍 Ubicación
+📐 Tallas
+💬 Otro`
     })
     return true
   }
 
   if (intent === 'goodbye') {
     await sock.sendMessage(from, {
-      text: `¡Hasta pronto! Gracias por visitar *${empresaConfig.nombre}*. Que tengas un excelente día. 👋`
+      text: `👋 Gracias por visitarnos. ¡Hasta pronto!`
     })
     return true
   }
@@ -197,32 +214,31 @@ export async function handleIntentRouter(
     'direccion', 'donde esta', 'direccion tienda',
     'donde esta ubicada', 'ubicada'
   ].some(keyword => removeAccents(normalized).includes(removeAccents(keyword)))) {
-    const { direccion, telefono, correo, ubicacionURL } = empresaConfig.contacto
+    const { direccion, telefono, ubicacionURL } = empresaConfig.contacto
     await sock.sendMessage(from, {
-      text: `🏠 ¡Hola, ${name}! Aquí está la dirección de nuestra tienda:
-
-📍 *Dirección:* ${direccion}
-🔗 Google Maps: ${ubicacionURL}
-📱 Teléfono: ${telefono}
-✉️ Correo: ${correo}`
+      text: `📍 ${direccion}
+🔗 Mapa: ${ubicacionURL}
+📱 ${telefono}`
     })
     return true
   }
 
   if (normalized.includes('cancelar') || normalized.includes('arrepenti') || normalized.includes('ya no lo quiero')) {
     await sock.sendMessage(from, {
-      text: `✅ Tu solicitud para cancelar el pedido fue registrada. Si ya realizaste un pago, por favor indícalo para procesar el reembolso.`
+      text: `✅ Pedido cancelado. Si pagaste, avisame para gestionar el reembolso.`
     })
     return true
   }
 
-  const fallbackResponse = getCatalogResponse(name, normalized, user?.lastSeen)
-  if (!fallbackResponse) {
+  if (intentosSinIntencion >= 1) {
     await sock.sendMessage(from, {
-      text: `🤔 No pude encontrar lo que necesitas. ¿Te gustaría que te ayude con algo específico? Puedo mostrarte nuestra colección de productos, o si tienes alguna pregunta más, ¡estoy aquí para ayudarte!`
+      text: `Veo que no estoy logrando ayudarte bien 😓. ¿Querés que te conecte con alguien de nuestro equipo?`
     })
   } else {
-    await sock.sendMessage(from, { text: fallbackResponse })
+    const fallbackResponse = getCatalogResponse(name, normalized, user?.lastSeen)
+    await sock.sendMessage(from, {
+      text: fallbackResponse || `🤔 No encontré eso. ¿Querés ver el catálogo?`
+    })
   }
 
   return true
