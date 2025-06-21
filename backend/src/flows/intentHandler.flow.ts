@@ -3,7 +3,7 @@
 import { WASocket, proto, downloadMediaMessage } from '@whiskeysockets/baileys'
 import { detectIntent, analyzeEmotion } from '@intelligence/intent.engine'
 import { getUser, saveUser } from '@memory/memory.mongo'
-import { Emotion, BotIntent, UserHistoryEntry } from '@schemas/UserMemory'
+import { Emotion, BotIntent, UserHistoryEntry, UserMemory } from '@schemas/UserMemory'
 import { handleWelcome } from './welcome.flow'
 import { getCatalogResponse } from '@intelligence/catalog.response'
 import { detectProductByKeywords } from '@intelligence/product.engine'
@@ -19,7 +19,7 @@ function buscarProductosPorKeywords(keywords: string): string[] {
 }
 
 const removeAccents = (str: string): string =>
-  str.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  str.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
 
 export async function handleIntentRouter(
   text: string,
@@ -31,7 +31,6 @@ export async function handleIntentRouter(
   const now = Date.now()
   const name = msg.pushName || from.split('@')[0]
 
-  // 🆕 Verificar si es nota de voz
   const isAudio = !!msg.message?.audioMessage
   if (isAudio) {
     const buffer = await downloadMediaMessage(msg, 'buffer', {})
@@ -43,7 +42,8 @@ export async function handleIntentRouter(
       normalized = await transcribirAudio(tempAudioPath)
     } catch (e) {
       await sock.sendMessage(from, {
-        text: '❌ No pude entender tu nota de voz. ¿Podés intentar escribirlo por texto, por favor?' })
+        text: '❌ No pude entender tu nota de voz. ¿Podés intentar escribirlo por texto, por favor?'
+      })
       return true
     } finally {
       await fs.unlink(tempAudioPath)
@@ -54,9 +54,32 @@ export async function handleIntentRouter(
   const lastSeen = user?.lastSeen ?? 0
   const saludoReciente = now - lastSeen < 2 * 60 * 1000
 
+  // 🔐 Bloqueo si hay un flujo activo como delivery, excepto si el mensaje contiene intención válida para delivery
+  const flujoActivo = user?.flujoActivo
+  const pasoEntrega = user?.pasoEntrega ?? 0
+  const excepcionesDelivery = ['retiro personal', 'delivery', 'encomienda']
+
+  if (
+    flujoActivo === 'delivery' &&
+    pasoEntrega > 0 &&
+    !excepcionesDelivery.some(k => normalized.includes(k))
+  ) {
+    console.log(`[INTERRUPCIÓN BLOQUEADA] Usuario en flujo "${flujoActivo}" - Paso ${pasoEntrega}. Intención ignorada.`)
+    return false
+  }
+
   const intent: BotIntent = detectIntent(normalized)
   const emotion: Emotion = analyzeEmotion(normalized)
   const detectedProduct = detectProductByKeywords(normalized)
+
+  const handledRecently =
+    user?.ultimoIntentHandled?.intent === intent &&
+    now - user.ultimoIntentHandled.timestamp < 3 * 60 * 1000
+
+  if (handledRecently) {
+    console.log(`⏳ Intención "${intent}" manejada recientemente. Se omite.`)
+    return true
+  }
 
   const historyEntry: UserHistoryEntry = {
     timestamp: now,
@@ -66,20 +89,27 @@ export async function handleIntentRouter(
     context: 'entrada'
   }
 
-  const updatedUser = {
-    _id: from,
-    name,
-    firstSeen: user?.firstSeen ?? now,
+  const updatedUser: UserMemory = {
+    ...(user || {
+      _id: from,
+      name,
+      firstSeen: now,
+      tags: [],
+      history: [],
+      emotionSummary: emotion,
+      needsHuman: false
+    }),
     lastSeen: now,
     lastMessage: text,
-    tags: user?.tags || [],
+    ultimaIntencion: intent,
     history: [...(user?.history || []), historyEntry],
     emotionSummary: emotion,
-    needsHuman: false,
-    ultimaIntencion: intent
+    ultimoIntentHandled: {
+      intent,
+      timestamp: now
+    }
   }
 
-  // 🆕 Si usuario responde "sí" a promociones
   if (normalized === 'sí' || normalized === 'si' || normalized.includes('quiero promociones')) {
     updatedUser.tags = Array.from(new Set([...(user?.tags || []), 'suscrito_promociones']))
     await saveUser(updatedUser)
@@ -93,10 +123,7 @@ export async function handleIntentRouter(
 
   const isGreeting = intent === 'greeting'
   const isComercialIntent =
-    intent === 'catalog' ||
-    intent === 'price' ||
-    intent === 'size' ||
-    intent === 'order' ||
+    ['catalog', 'price', 'size', 'order'].includes(intent) ||
     (isGreeting && detectedProduct)
 
   if (isGreeting && !detectedProduct) {
@@ -107,8 +134,9 @@ export async function handleIntentRouter(
     if (intent === 'price' || detectedProduct) {
       const productosRelacionados = buscarProductosPorKeywords(normalized)
       if (productosRelacionados.length > 0) {
-        const response = `Aquí tienes algunos productos relacionados con tu consulta sobre precios:\n\n${productosRelacionados.join('\n\n')}`
-        await sock.sendMessage(from, { text: response })
+        await sock.sendMessage(from, {
+          text: `Aquí tienes algunos productos relacionados con tu consulta sobre precios:\n\n${productosRelacionados.join('\n\n')}`
+        })
         return true
       } else {
         await sock.sendMessage(from, {
@@ -117,7 +145,6 @@ export async function handleIntentRouter(
         return true
       }
     }
-
     const response = getCatalogResponse(name, normalized, user?.lastSeen)
     await sock.sendMessage(from, { text: response })
     return true
@@ -131,9 +158,10 @@ export async function handleIntentRouter(
   }
 
   if (intent === 'complaint') {
-    await sock.sendMessage(from, {
-      text: `😔 Lamento que estés teniendo un inconveniente. Cuéntame qué pasó y haré lo posible por ayudarte.`
-    })
+    const respuesta = emotion === 'frustrated'
+      ? '😣 Veo que esto te ha molestado. Estoy aquí para solucionarlo.'
+      : '😔 Lamento el inconveniente. Cuéntame más y lo resolvemos.'
+    await sock.sendMessage(from, { text: respuesta })
     return true
   }
 
@@ -152,7 +180,8 @@ export async function handleIntentRouter(
 🧾 *Pagos*
 📍 *Ubicación*
 📐 *Tallas*
-💬 *Otro*` })
+💬 *Otro*`
+    })
     return true
   }
 

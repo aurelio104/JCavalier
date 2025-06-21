@@ -1,10 +1,13 @@
+// ✅ src/flows/payment.flow.ts
+
 import { addKeyword, FlowFnProps } from '@bot-whatsapp/bot'
 import { saveConversationToMongo } from '@memory/memory.mongo'
 import { empresaConfig } from '../config/empresaConfig'
 import axios from 'axios'
+import { runDeliveryFlowManualmente } from './delivery.flow'
 
 const removeAccents = (str: string): string =>
-  str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  str.normalize('NFD').replace(/\u0300-\u036f/g, '').toLowerCase()
 
 const formatBs = (monto: number): string =>
   monto.toLocaleString('es-VE', {
@@ -58,12 +61,21 @@ export const pasoProcesarMetodo = async (
   let timestamp = data.timestampTasaBCV || 0
   const vencida = Date.now() - timestamp > 3600000
 
-  if (!tasaBCV || tasaBCV <= 0 || vencida) {
+  const esPagoMovil = /\b1\b|pago movil|movil/.test(respuesta)
+  const esTransferencia = /\b2\b|transferencia/.test(respuesta)
+  const necesitaBCV = esPagoMovil || esTransferencia
+
+  if (necesitaBCV && (!tasaBCV || tasaBCV <= 0 || vencida)) {
     tasaBCV = await obtenerTasaBCV()
+    if (tasaBCV <= 0) {
+      return void await flowDynamic([
+        '❌ Hubo un problema obteniendo la tasa oficial del dólar. Intenta nuevamente en unos minutos.'
+      ])
+    }
     timestamp = Date.now()
   }
 
-  const totalBs = parseFloat((total * tasaBCV).toFixed(2))
+  const totalBs = necesitaBCV ? parseFloat((total * tasaBCV).toFixed(2)) : 0
   const totalLine = `\n\n💰 *Total a pagar:* $${total.toFixed(2)}`
   const totalBsLine = totalBs > 0 ? `\n💰 *Total en bolívares:* ${formatBs(totalBs)}` : ''
 
@@ -75,13 +87,13 @@ export const pasoProcesarMetodo = async (
     metodo = 'Efectivo'
     mensajePago = `Perfecto, ${name} 🙌 Has seleccionado *efectivo al recibir*.
 \n💵 Tu pedido será entregado personalmente y podrás pagar en el momento de la entrega.${totalLine}`
-  } else if (/\b1\b|pago movil|movil/.test(respuesta)) {
+  } else if (esPagoMovil) {
     metodo = 'Pago móvil'
     mensajePago = `Perfecto, ${name} 🙌 Aquí tienes los datos para *Pago Móvil*:
 \n📱 Teléfono: ${empresaConfig.metodosPago.pagoMovil.telefono}  
 ${empresaConfig.metodosPago.pagoMovil.cedula ? `🆔 Cédula: ${empresaConfig.metodosPago.pagoMovil.cedula}\n` : ''}🏦 Banco: ${empresaConfig.metodosPago.pagoMovil.banco}${totalLine}${totalBsLine}
 \n🧾 Cuando hagas el pago, envíame el comprobante aquí. 😉`
-  } else if (/\b2\b|transferencia/.test(respuesta)) {
+  } else if (esTransferencia) {
     metodo = 'Transferencia bancaria'
     mensajePago = `Perfecto, ${name} 🙌 Aquí están los datos para *Transferencia Bancaria*:
 \n🏦 Banco: ${empresaConfig.metodosPago.transferenciaBancaria.banco}  
@@ -121,6 +133,15 @@ ${empresaConfig.metodosPago.pagoMovil.cedula ? `🆔 Cédula: ${empresaConfig.me
 
   await saveConversationToMongo(ctx.from, await state.getMyState())
   await flowDynamic(mensajePago)
+
+  if (metodo === 'Efectivo') {
+    await runDeliveryFlowManualmente(ctx, {
+      flowDynamic,
+      gotoFlow: async () => {},
+      state,
+      fallBack: async () => {}
+    })
+  }
 }
 
 export const paymentFlow = addKeyword('TOTAL_CONFIRMADO')
@@ -129,5 +150,7 @@ export const paymentFlow = addKeyword('TOTAL_CONFIRMADO')
 
 export const paymentActions = {
   pasoMetodoPago,
-  pasoProcesarMetodo
-} 
+  pasoProcesarMetodo,
+}
+
+export { obtenerTasaBCV }

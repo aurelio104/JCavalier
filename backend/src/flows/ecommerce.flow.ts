@@ -14,12 +14,14 @@ import { Emotion, BotIntent, UserMemory } from '@schemas/UserMemory'
 
 export const ecommerceFlow = addKeyword('welcome')
   .addAction(async (ctx: FlowFnProps['ctx'], { flowDynamic, state, gotoFlow }) => {
-    const { body: text, pushName } = ctx
+    const { body: text, pushName, from } = ctx
     const normalizedText = text.toLowerCase().trim()
 
-    const user = await state.getMyState()
+    const name = pushName || from.split('@')[0]
     const intent: BotIntent = detectIntent(normalizedText)
     const emotion: Emotion = analyzeEmotion(normalizedText)
+
+    const user = await state.getMyState()
 
     if (intent === 'catalog') {
       await flowDynamic([
@@ -53,31 +55,37 @@ export const ecommerceFlow = addKeyword('welcome')
 
         const total = resultado.productos.reduce((sum, p) => sum + parseFloat(p.precio), 0)
 
-        await saveConversationToMongo(ctx.from, {
-          name: pushName || 'cliente',
+        // 🧠 Guardar en memoria temporal y MongoDB
+        const memoriaParcial: Partial<UserMemory> = {
+          name,
           productos: resultado.productos.map((p) => p.nombre),
           total: total.toFixed(2),
           ultimaIntencion: 'order',
           fechaUltimaCompra: Date.now(),
           needsHuman: false,
-          emotionSummary: emotion
-        } as Partial<UserMemory>)
+          emotionSummary: emotion,
+          flujoActivo: 'payment',
+          ultimoIntentHandled: {
+            intent: 'order',
+            timestamp: Date.now()
+          }
+        }
+
+        await saveConversationToMongo(from, memoriaParcial)
+        await state.update(memoriaParcial)
 
         await flowDynamic([
-          `✨ ¡Hermosa elección, ${pushName || 'cliente'}! Aquí tenés el resumen de tu pedido:
-
-${resumen}
-
-💰 *Total a pagar: $${total.toFixed(2)}*`,
+          `✨ ¡Hermosa elección, ${name}! Aquí tenés el resumen de tu pedido:\n\n${resumen}`,
+          `💰 *Total a pagar: $${total.toFixed(2)}*`,
           '¿Cómo preferís realizar el pago?',
           '1️⃣ *Pago móvil*',
           '2️⃣ *Transferencia bancaria*',
           '3️⃣ *Zelle*',
           '4️⃣ *Binance*',
-          '5️⃣ *Efectivo* (al recibir el producto)'
+          '5️⃣ *Efectivo* (al recibir el producto)',
+          '🛒 Dirigiéndote al pago...'
         ])
 
-        await flowDynamic('🛒 Dirigiéndote al pago...')
         return await gotoFlow(paymentFlow)
       }
 
@@ -92,20 +100,5 @@ ${resumen}
     await flowDynamic([
       '👋 Estoy aquí para ayudarte con cualquier consulta sobre nuestro catálogo o productos.',
       'Si estás buscando algo específico, contame qué te gustaría ver y con gusto te ayudo. 😉'
-    ])
-  })
-
-  .addAction(async (ctx: FlowFnProps['ctx'], { flowDynamic, state, gotoFlow }) => {
-    const user = await state.getMyState()
-    if (user?.ultimaIntencion === 'order') {
-      await flowDynamic([
-        `Tu pedido está confirmado. 💪🏼 El total es de $${user.total}.`,
-        '¡Gracias por tu compra! Procederemos al siguiente paso.'
-      ])
-      return await gotoFlow(paymentFlow)
-    }
-
-    await flowDynamic([
-      '⚠️ No pude entender correctamente tu pedido. Por favor, intentá nuevamente o escribí "quiero ayuda" para asistencia personalizada.'
     ])
   })

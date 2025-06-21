@@ -1,9 +1,9 @@
 // ✅ src/flows/welcome.flow.ts
 
 import { WASocket, proto } from '@whiskeysockets/baileys'
-import { getUser, saveUser } from '@memory/memory.mongo'
-import { analyzeEmotion, detectIntent } from '@intelligence/intent.engine'
-import { Emotion, BotIntent, UserHistoryEntry } from '@schemas/UserMemory'
+import { getUser, saveConversationToMongo } from '@memory/memory.mongo'
+import { analyzeEmotion, detectIntent, detectarPerfilDeCompra } from '@intelligence/intent.engine'
+import { Emotion, BotIntent, UserHistoryEntry, UserMemory } from '@schemas/UserMemory'
 import { empresaConfig } from '../config/empresaConfig'
 
 // Función para obtener el saludo adecuado según la hora del día
@@ -64,7 +64,6 @@ export async function handleWelcome(
 ): Promise<boolean> {
   const normalized = text.toLowerCase().trim()
 
-  // Saludos mixtos (Spanglish o emojis)
   const greetingWords = ['hola', 'buenas', 'hello', 'hi', 'hey', '👋', '😊', '🤗']
   const isGreetingLike = greetingWords.some(g => normalized.includes(g))
 
@@ -78,6 +77,8 @@ export async function handleWelcome(
   const isGroup = !!msg.key.participant
   const isNew = !user
   const emotion: Emotion = analyzeEmotion(normalized)
+  const perfil = detectarPerfilDeCompra(normalized)
+  const frequency: UserMemory['frequency'] = 'ocasional'
 
   if (isGroup) {
     await sock.sendMessage(from, {
@@ -88,30 +89,52 @@ También pueden explorar: ${empresaConfig.enlaces.catalogo}`
     return true
   }
 
+  // ⏳ Evitar repetición si ya se saludó hace poco
+  const lastShown = user?.ultimoWelcomeShown ? new Date(user.ultimoWelcomeShown).getTime() : 0
+  const diffMinutes = (now - lastShown) / 60000
+  if (diffMinutes < 5) {
+    console.log('⏳ Saludo reciente. Se omite.')
+    return false
+  }
+
   const welcomeMessage = generateWelcomeMessage(name, greeting, isNew, emotion)
   await sock.sendMessage(from, { text: welcomeMessage })
+
+  if (isNew) {
+    await sock.sendMessage(from, {
+      text: `🛍️ Podés comenzar mirando el catálogo completo aquí:
+${empresaConfig.enlaces.catalogo}`
+    })
+  }
 
   const historyEntry: UserHistoryEntry = {
     timestamp: now,
     message: text,
     intent: 'greeting',
     emotion,
-    context: 'entrada'
+    context: isGroup ? 'grupo' : 'privado'
   }
 
-  const updatedUser = {
-    _id: from,
-    name,
-    firstSeen: user?.firstSeen ?? now,
+  const updatedUser: UserMemory = {
+    ...(user || {
+      _id: from,
+      name,
+      firstSeen: now,
+      tags: [],
+      history: [],
+      emotionSummary: emotion,
+      needsHuman: false
+    }),
     lastSeen: now,
     lastMessage: text,
-    tags: user?.tags || [],
+    ultimaIntencion: 'greeting',
+    profileType: perfil,
+    frequency,
+    tags: [...new Set([...(user?.tags || []), perfil])],
     history: [...(user?.history || []), historyEntry],
-    emotionSummary: emotion,
-    needsHuman: false,
-    ultimaIntencion: 'greeting' as BotIntent
+    ultimoWelcomeShown: new Date(now)
   }
 
-  await saveUser(updatedUser)
+  await saveConversationToMongo(from, updatedUser)
   return true
 }

@@ -4,6 +4,11 @@ export const empresaConfig = {
   // Información básica de la empresa
   nombre: 'JCAVALIER',  // Nombre de la empresa
 
+  admin: {
+  numero: '584128966414'  // Número del administrador (usado para comandos especiales)
+},
+
+
 // Información de contacto
 contacto: {
   telefono: '04121234567',
@@ -212,4 +217,22 @@ delivery: {
     "Disculpa, ¿podrías contarme un poco más para ayudarte mejor?"
     `,
   },
+  estadosPedido: [
+  'pendiente',
+  'pago_verificado',
+  'en_fabrica',
+  'empaquetado',
+  'enviado',
+  'en_camino',
+  'entregado',
+  'recibido',
+  'cancelado'
+],
+mensajesPedido: {
+  en_fabrica: '🧵 Tu pedido está en proceso de fabricación. Estará listo en 1 día hábil.',
+  empaquetado: '📦 Tu pedido fue empaquetado y está listo para el envío.',
+  en_camino: '🚚 Tu pedido ya fue enviado y está en camino.',
+  entregado: '✅ Pedido entregado. ¡Gracias por tu compra!',
+  recibido: '🎉 ¡Gracias por confirmar que recibiste tu pedido! Esperamos que lo disfrutes.',
+}
 };

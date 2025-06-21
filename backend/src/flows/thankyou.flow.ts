@@ -1,8 +1,6 @@
-// ✅ src/flows/thankyou.flow.ts
-
 import { addKeyword, FlowFnProps } from '@bot-whatsapp/bot'
 import { empresaConfig } from '../config/empresaConfig'
-import { getUser } from '@memory/memory.mongo'
+import { getUser, saveConversationToMongo } from '@memory/memory.mongo'
 
 export const thankyouFlow = addKeyword('FLUJO_FINAL').addAction(
   async (ctx: FlowFnProps['ctx'], { flowDynamic }) => {
@@ -10,13 +8,21 @@ export const thankyouFlow = addKeyword('FLUJO_FINAL').addAction(
     const from = ctx.from
     const user = await getUser(from)
 
+    const now = Date.now()
+    const ultimaVez = user?.ultimoThankYouShown ? new Date(user.ultimoThankYouShown).getTime() : 0
+    const hanPasado5Min = now - ultimaVez > 5 * 60 * 1000
+
+    if (!hanPasado5Min) {
+      console.log('⏳ Mensaje de agradecimiento ya fue mostrado recientemente. No se repite.')
+      return
+    }
+
     const tipoEntrega = user?.tipoEntrega || ''
     const emocion = user?.emotionSummary || 'neutral'
     const perfil = user?.profileType || 'explorador'
 
     const recomendaciones: string[] = []
 
-    // 🎭 Variar mensaje emocional
     let mensajeFinal = ''
     switch (emocion) {
       case 'positive':
@@ -29,7 +35,6 @@ export const thankyouFlow = addKeyword('FLUJO_FINAL').addAction(
         mensajeFinal = 'Gracias por elegirnos. Siempre estamos para servirte. 😊'
     }
 
-    // 🎯 Sugerencia personalizada por perfil
     switch (perfil) {
       case 'explorador':
         recomendaciones.push('✨ No te pierdas nuestras piezas nuevas cada semana.')
@@ -42,7 +47,6 @@ export const thankyouFlow = addKeyword('FLUJO_FINAL').addAction(
         break
     }
 
-    // 🚚 Añadir nota sobre el tipo de entrega
     let mensajeEntrega = ''
     if (tipoEntrega.includes('Retiro')) {
       mensajeEntrega = '📍 Recordá que tu pedido te espera para retirar en tienda. ¡No olvides traer tu comprobante si aplica!'
@@ -76,5 +80,10 @@ export const thankyouFlow = addKeyword('FLUJO_FINAL').addAction(
       '',
       '¡Hasta pronto y que disfrutes tu compra! 💖'
     ])
+
+    await saveConversationToMongo(from, {
+      ...user,
+      ultimoThankYouShown: new Date()
+    })
   }
 )

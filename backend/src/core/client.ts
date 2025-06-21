@@ -25,7 +25,7 @@ import {
   contienePedidoDesdeWeb,
   parseOrderMessage
 } from '@intelligence/order.detector'
-import { paymentActions } from '@flows/payment.flow'
+import { paymentActions, obtenerTasaBCV } from '@flows/payment.flow'
 import { deliveryFlow, runDeliveryFlowManualmente } from '@flows/delivery.flow'
 import { handleIntentRouter } from '@flows/intentHandler.flow'
 import { detectLanguageFromHistory, maybeTranslateToSpanish } from '@utils/lang'
@@ -34,11 +34,13 @@ import { empresaConfig } from '../config/empresaConfig'
 import { validarComprobante } from '../ocr/ocr.masterValidator'
 import { leerTextoDesdeImagen } from '../ocr/ocr.reader'
 import { transcribirNotaDeVoz } from '../utils/whisper.engine'
+import { generarPDFPedido } from '../utils/pdf.generator'
 import fs from 'fs/promises'
 import path from 'path'
 import { randomUUID } from 'crypto'
 import os from 'os'
 import pino from 'pino'
+import { detectarMoneda } from '@utils/moneda'
 
 const frustrationCounter: Record<string, number> = {}
 const MAX_FRUSTRATION = 2
@@ -54,7 +56,6 @@ function calcularFrecuencia(historial: { timestamp: number }[]): 'ocasional' | '
   return 'ocasional'
 }
 
-
 let botStarted = false
 
 export async function startBot() {
@@ -63,7 +64,6 @@ export async function startBot() {
 
   await connectMongo()
   const { state, saveCreds } = await useMultiFileAuthState(process.env.AUTH_FOLDER || 'auth')
-
   const { version } = await fetchLatestBaileysVersion()
 
   const sock: WASocket = makeWASocket({
@@ -89,9 +89,7 @@ export async function startBot() {
     if (connection === 'close') {
       const reasonCode = (lastDisconnect?.error as any)?.output?.statusCode
       console.warn(`⚠️ Desconexión detectada. Código: ${reasonCode}`)
-
       const shouldReconnect = reasonCode !== DisconnectReason.loggedOut
-
       if (shouldReconnect) {
         botStarted = false
         console.log('🔄 Reintentando conexión...')
@@ -105,12 +103,10 @@ export async function startBot() {
     }
   })
 
-
- sock.ev.on('messages.upsert', async ({ messages }: { messages: proto.IWebMessageInfo[] }) => {
+  sock.ev.on('messages.upsert', async ({ messages }: { messages: proto.IWebMessageInfo[] }) => {
     try {
       const msg = messages[0]
       if (!msg.message || msg.key.fromMe) return
-
       const from = typeof msg.key.remoteJid === 'string' ? msg.key.remoteJid.trim() : ''
       const name = msg.pushName || from.split('@')[0] || 'cliente'
       const isImage = !!msg.message?.imageMessage
@@ -139,33 +135,72 @@ export async function startBot() {
         rawText = transcripcion
       }
 
-    let userMemory: UserMemory | null = await getUser(from)
-    const lang = detectLanguageFromHistory(userMemory?.history?.map(h => h.message) || [], rawText)
-    const text = await maybeTranslateToSpanish(rawText, lang)
-    const lower = text.toLowerCase()
-    const normalized = removeAccents(lower)
+      let userMemory: UserMemory | null = await getUser(from)
+      const lang = detectLanguageFromHistory(userMemory?.history?.map(h => h.message) || [], rawText)
+      const text = await maybeTranslateToSpanish(rawText, lang)
+      const lower = text.toLowerCase()
+      const normalized = removeAccents(lower)
 
-    const perfil = detectarPerfilDeCompra(lower)
-    const frecuencia = calcularFrecuencia(userMemory?.history || [])
+      const perfil = detectarPerfilDeCompra(lower)
+      const frecuencia = calcularFrecuencia(userMemory?.history || [])
 
-    if (userMemory) {
-      userMemory.lastSeen = Date.now()
-      userMemory.lastMessage = text
-      userMemory.profileType = perfil
-      userMemory.frequency = frecuencia
-      if (!userMemory.tags.includes(perfil)) userMemory.tags.push(perfil)
-    }
+      if (isText && userMemory) {
+        const lowerTrimmed = rawText.trim().toLowerCase()
+        const comandosAdmin = [
+          'en_fabrica', 'empaquetado', 'enviado', 'en_camino', 'entregado', 'recibido', 'cancelado'
+        ]
 
-    if (quickReacts[lower]) {
-      void sock.sendMessage(from, { text: quickReacts[lower] })
-      return
-    }
+        const mensajeEstado = {
+          en_fabrica: '🏭 Tu pedido está siendo preparado en fábrica.',
+          empaquetado: '📦 Tu pedido ha sido empaquetado con cuidado.',
+          enviado: '🚚 ¡Tu pedido ha sido enviado!',
+          en_camino: '🛵 Tu pedido ya está en camino.',
+          entregado: '✅ Tu pedido ha sido entregado. ¡Gracias por tu compra!',
+          recibido: '📬 Hemos confirmado que recibiste tu pedido. ¡Qué lo disfrutes!',
+          cancelado: '❌ Tu pedido fue cancelado. Si tienes dudas, contáctanos.',
+          pago_verificado: '💳 Tu pago ha sido verificado correctamente.',
+          pendiente: '⌛ Tu pedido está pendiente por procesar.'
+        } as const
 
-    if (lower === 'reset') {
-      frustrationCounter[from] = 0
-      void sock.sendMessage(from, { text: '🔄 Conversación reiniciada manualmente.' })
-      return
-    }
+        const matchComando = comandosAdmin.find(cmd => lowerTrimmed === `/${cmd}`)
+
+        if (matchComando !== undefined) {
+          const nuevoEstado = matchComando as keyof typeof mensajeEstado
+
+          userMemory.estadoPedido = nuevoEstado
+          await saveConversationToMongo(from, userMemory)
+
+          void sock.sendMessage(from, {
+            text: `✅ Estado del pedido actualizado a: *${nuevoEstado.replace(/_/g, ' ')}*`
+          })
+
+          void sock.sendMessage(from, {
+            text: `🔔 ${mensajeEstado[nuevoEstado]}`
+          })
+
+          return
+        }
+      }
+
+      if (userMemory) {
+        userMemory.lastSeen = Date.now()
+        userMemory.lastMessage = text
+        userMemory.profileType = perfil
+        userMemory.frequency = frecuencia
+        if (!userMemory.tags.includes(perfil)) userMemory.tags.push(perfil)
+      }
+
+      if (quickReacts[lower]) {
+        void sock.sendMessage(from, { text: quickReacts[lower] })
+        return
+      }
+
+      if (lower === 'reset') {
+        frustrationCounter[from] = 0
+        void sock.sendMessage(from, { text: '🔄 Conversación reiniciada manualmente.' })
+        return
+      }
+
 
     if (contienePedidoDesdeWeb(text)) {
       const resultado = parseOrderMessage(text)
@@ -230,23 +265,54 @@ export async function startBot() {
     }
 
     const preguntaDePago = /((metodos?|formas?) de pagos?|como (puedo )?pagar|aceptan|quiero pagar|puedo pagar con|cu[aá]les son los m[ée]todos? de pagos?)/i.test(normalized)
-    const esSeleccionDeMetodo = ['pago movil', 'transferencia', 'zelle', 'binance', 'efectivo']
-      .some(w => normalized.includes(w)) &&
-      userMemory?.ultimaIntencion === 'order' &&
-      userMemory?.esperandoComprobante === true
 
-    if (preguntaDePago && !esSeleccionDeMetodo) {
-      const metodos = Object.keys(empresaConfig.metodosPago)
-        .map((metodo: string) =>
-          `✅ ${metodo.replace(/([A-Z])/g, ' $1').replace(/^./, l => l.toUpperCase())}`
-        ).join('\n')
+const esSeleccionDeMetodo = ['pago movil', 'transferencia', 'zelle', 'binance', 'efectivo']
+  .some(w => normalized.includes(w)) &&
+  userMemory?.ultimaIntencion === 'order' &&
+  userMemory?.esperandoComprobante === true
+
+
+ // 🔍 Módulo de preguntas informativas rápidas
+    const preguntaInformativa = /\b(aceptan bol[ií]vares?|tasa|taza|horario|ubicaci[oó]n|d[oó]nde est[aá]n|direcci[oó]n|d[oó]lares?)\b/.test(normalized)
+
+    if (preguntaInformativa) {
+      const moneda = detectarMoneda(normalized)
+
+if (moneda === 'VES') {
+  const tasaBCV = await obtenerTasaBCV()
+  const metodos = ['Pago Movil', 'Transferencia Bancaria'].map(m => `✅ ${m}`).join('\n')
+  const tasaTexto = tasaBCV > 0
+    ? `📊 Tasa oficial BCV actual: ${tasaBCV.toFixed(2)} Bs/USD`
+    : `⚠️ No se pudo obtener la tasa oficial BCV.`
+
+  void sock.sendMessage(from, {
+    text: `💳 Aceptamos estos métodos de pago en bolívares:\n\n${metodos}\n\n${tasaTexto}`
+  })
+  return
+}
+
+
+      if (normalized.includes('ubicacion') || normalized.includes('direccion') || normalized.includes('donde estan')) {
+        const { direccion, telefono, correo, ubicacionURL } = empresaConfig.contacto
+        void sock.sendMessage(from, {
+          text: `🏠 ¡Hola, ${name}! Aquí está la dirección de nuestra tienda:\n\n📍 *Dirección:* ${direccion}\n🔗 Google Maps: ${ubicacionURL}\n📱 Teléfono: ${telefono}\n✉️ Correo: ${correo}\n\n¿En qué más puedo ayudarte? 😊`
+        })
+        return
+      }
+
+      if (normalized.includes('horario')) {
+        void sock.sendMessage(from, {
+          text: `🕒 Nuestro horario de atención es:\n\n🗓️ Lunes a Viernes: 8:00 a.m. a 6:00 p.m.\n🕛 Sábados: hasta mediodía.\n\n¿En qué más puedo ayudarte? 😊`
+        })
+        return
+      }
 
       void sock.sendMessage(from, {
-        text: `💳 Aceptamos estos métodos de pago:\n\n${metodos}\n\nCuando elijas uno, te enviaré los datos para completar tu pago.`
+        text: `¡Claro ${name}! ¿En qué más puedo ayudarte? 😊`
       })
       return
     }
-
+      
     if (esSeleccionDeMetodo) {
       const fakeCtx = { from, body: text, pushName: name }
 
@@ -270,6 +336,7 @@ export async function startBot() {
       return
     }
 
+// 1️⃣ Después de validar comprobante exitosamente
 if (isImage) {
   userMemory = await getUser(from)
   if (!userMemory) return
@@ -312,68 +379,103 @@ if (isImage) {
 
   await fs.unlink(tempPath)
 
-  void sock.sendMessage(from, { text: resultadoOCR.resumen })
+  await sock.sendMessage(from, { text: resultadoOCR.resumen })
 
   if (!resultadoOCR.valido) {
-    void sock.sendMessage(from, {
-      text: `⚠️ El comprobante no coincide con los datos esperados. Por favor, verifica el monto o el correo y vuelve a intentarlo.`
+    await sock.sendMessage(from, {
+      text: '⚠️ El comprobante no coincide con los datos esperados.\n\nPor favor, asegúrate de que:\n\n• El monto sea correcto\n• El número de referencia sea legible\n• Se vea completo y sin recortes\n\n📸 Podés reenviar la imagen cuando estés listo.'
     })
     return
   }
 
-  // ✔️ Comprobante válido: actualizamos estado
   userMemory.esperandoComprobante = false
   userMemory.ultimaIntencion = 'delivery'
+  userMemory.esperandoMetodoEntrega = true
+  userMemory.flujoActivo = 'delivery'
+
+  if (!userMemory.pasoEntrega || userMemory.pasoEntrega < 1) {
+    userMemory.pasoEntrega = 1
+  }
+
   await saveConversationToMongo(from, userMemory)
 
-  await runDeliveryFlowManualmente(
-    { from, body: '', pushName: name },
-    {
-      flowDynamic: async (msg: string | string[]) => {
-        void sock.sendMessage(from, { text: Array.isArray(msg) ? msg.join('\n\n') : msg })
-      },
-      gotoFlow: async () => {},
-      state: {
-        getMyState: async () => userMemory!,
-        update: async (d: Partial<UserMemory>) => {
-          Object.assign(userMemory!, d)
-          await saveConversationToMongo(from, userMemory!)
+  try {
+    await runDeliveryFlowManualmente(
+      { from, body: '', pushName: name },
+      {
+        flowDynamic: async (msg) => {
+          void sock.sendMessage(from, {
+            text: Array.isArray(msg) ? msg.join('\n\n') : msg
+          })
         },
-        clear: async () => {}
-      },
-      fallBack: async () => {
-        void sock.sendMessage(from, {
-          text: 'No entendí tu mensaje, ¿podés repetirlo?'
-        })
+        gotoFlow: async () => {},
+        state: {
+          getMyState: async () => userMemory!,
+          update: async (d) => {
+            Object.assign(userMemory!, d)
+            await saveConversationToMongo(from, userMemory!)
+          },
+          clear: async () => {}
+        },
+        fallBack: async () => {
+          void sock.sendMessage(from, {
+            text: 'No entendí tu mensaje, ¿podés repetirlo?'
+          })
+        }
       }
+    )
+  } catch (err: any) {
+    if (err.message !== '__handled_by_delivery_flow__') {
+      console.error('❌ Error inesperado en flujo de delivery:', err)
     }
-  )
+  }
+
   return
 }
 
-    if (isText && userMemory?.ultimaIntencion === 'delivery') {
+
+if (
+  isText &&
+  userMemory?.flujoActivo === 'delivery'
+) {
+  const opcionesEntrega = ['retiro personal', 'delivery', 'encomienda', 'maracay', 'nacional']
+  const matchEntrega = opcionesEntrega.some(p => removeAccents(lower).includes(removeAccents(p)))
+
+  if (userMemory?.esperandoMetodoEntrega === true || matchEntrega) {
+    let handled = false
+    try {
       await runDeliveryFlowManualmente(
         { from, body: text, pushName: name },
         {
           flowDynamic: async (msg: string | string[]) => {
-            void sock.sendMessage(from, { text: Array.isArray(msg) ? msg.join('\n\n') : msg })
+            const contenido = Array.isArray(msg) ? msg.join('\n\n') : msg
+            await sock.sendMessage(from, { text: contenido })
           },
           gotoFlow: async () => {},
           state: {
             getMyState: async () => userMemory!,
-            update: async (d: Partial<UserMemory>) => {
+            update: async (d) => {
               Object.assign(userMemory!, d)
               await saveConversationToMongo(from, userMemory!)
             },
             clear: async () => {}
           },
           fallBack: async () => {
-            void sock.sendMessage(from, { text: 'No entendí tu mensaje, ¿podés repetirlo?' })
+            await sock.sendMessage(from, {
+              text: '⚠️ No entendí tu mensaje, ¿podés repetirlo?'
+            })
           }
         }
       )
-      return
+      handled = true
+    } catch (err: any) {
+      if (err.message === '__handled_by_delivery_flow__') return
+      console.error('❌ Error inesperado en flujo de delivery:', err)
     }
+    if (handled) return
+  }
+}
+
 
     const keywordsUbicacion = [
       'ubicacion', 'ubicacion exacta', 'ubicados', 'direccion', 'direcion', 'donde estan',
@@ -405,15 +507,15 @@ if (isImage) {
       frustrationCounter[from] = 0
       return
     }
+      const fallback = await generatePersonalizedReply(from, text)
+      void sock.sendMessage(from, { text: fallback })
 
-    const fallback = await generatePersonalizedReply(from, text)
-    void sock.sendMessage(from, { text: fallback })
+      if (emotion === 'negative' && intent !== 'complaint') {
+        void sock.sendMessage(from, {
+          text: 'Percibo que algo no está bien 😔. Si quieres, puedo ayudarte o pasarte con alguien del equipo.'
+        })
+      }
 
-    if (emotion === 'negative' && intent !== 'complaint') {
-      void sock.sendMessage(from, {
-        text: 'Percibo que algo no está bien 😔. Si quieres, puedo ayudarte o pasarte con alguien del equipo.'
-      })
-    }
     } catch (err: any) {
       if (err?.message?.includes('Bad MAC')) {
         console.warn('🔐 Bad MAC detectado. El mensaje no pudo ser desencriptado correctamente.')
@@ -422,4 +524,4 @@ if (isImage) {
       }
     }
   })
-}
+} // fin de startBot()

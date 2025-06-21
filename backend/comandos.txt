@@ -1,0 +1,12 @@
+🛠️ Comandos internos del dueño (solo desde el número autorizado)
+
+| Comando (Admin)            | Estado Interno    | Mensaje que recibe el cliente                        |
+| -------------------------- | ----------------- | ---------------------------------------------------- |
+| `/pago verificado`         | `pago_verificado` | 💵 Tu pago fue verificado. Tu pedido será preparado. |
+| `/en fabrica`              | `en_fabrica`      | 🧵 Tu pedido está en fábrica. Estará listo en 1 día. |
+| `/empaquetado`             | `empaquetado`     | 📦 Tu pedido ha sido empaquetado.                    |
+| `/enviado`                 | `enviado`         | 📦 Tu pedido fue enviado.                            |
+| `/en camino`               | `en_camino`       | 🚚 Tu pedido está en camino.                         |
+| `/entregado`               | `entregado`       | ✅ Tu pedido fue entregado.                           |
+| `/cancelado`               | `cancelado`       | ⚠️ Tu pedido fue cancelado.                          |
+| `recibido` *(por cliente)* | `recibido`        | 🎉 ¡Gracias por confirmar que recibiste tu pedido!   |

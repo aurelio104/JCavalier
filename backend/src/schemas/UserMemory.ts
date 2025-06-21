@@ -28,6 +28,9 @@ export interface UserHistoryEntry {
 
 /** 🧠 Memoria principal de un usuario */
 export interface UserMemory {
+  /** 🆔 Identificador único del usuario (MongoDB) */
+  _id: string
+
   name: string
   firstSeen: number
   lastSeen: number
@@ -51,12 +54,26 @@ export interface UserMemory {
   timestampTasaBCV?: number
   pasoEntrega?: number
 
-  // 🆕 CAMPOS NUEVOS PARA CONTEXTO INTELIGENTE
-  lastViewedProduct?: string           // Último producto visto o consultado
-  lastOrder?: string                   // Último pedido confirmado (formato corto o string libre)
-  location?: string                    // Zona geográfica habitual del cliente
-  frequency?: 'ocasional' | 'frecuente' | 'recurrente' // Frecuencia de interacción
-  profileType?: 'explorador' | 'comprador directo' | 'indeciso' // Perfil de comportamiento comercial
+  // 🧠 CONTEXTO INTELIGENTE Y OPERATIVO
+  lastViewedProduct?: string
+  lastOrder?: string
+  location?: string
+  frequency?: 'ocasional' | 'frecuente' | 'recurrente'
+  profileType?: 'explorador' | 'comprador directo' | 'indeciso'
+  esperandoMetodoEntrega?: boolean
+  ultimoResumenPedido?: Date
+  flujoActivo?: string | null
+  ultimoThankYouShown?: Date
+  ultimoWelcomeShown?: Date
+
+  /** ⏳ Última intención manejada (para prevenir repeticiones) */
+  ultimoIntentHandled?: { intent: BotIntent, timestamp: number }
+
+  /** 🚚 Estado del pedido (seguimiento) */
+  estadoPedido?: 'pendiente' | 'pago_verificado' | 'en_fabrica' | 'empaquetado' | 'enviado' | 'en_camino' | 'entregado' | 'recibido' | 'cancelado'
+
+  /** 🤖 Contacto real del cliente para notificaciones desde el bot */
+  contactoCliente?: string
 }
 
 /** 🧠 Versión estricta con todos los campos requeridos */
