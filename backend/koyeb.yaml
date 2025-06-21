@@ -1,8 +1,11 @@
 name: bot-inteligente
 build:
   commands:
-    - pnpm install
+    - corepack enable
+    - corepack prepare pnpm@10.12.1 --activate
+    - pnpm install --no-frozen-lockfile
     - pnpm build
+
 run:
   cmd: pnpm start
   env:
