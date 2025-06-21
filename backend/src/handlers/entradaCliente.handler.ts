@@ -65,5 +65,18 @@ export async function manejarEntradaInformativa({
     return true
   }
 
+  // 🛍️ Ventas al mayor
+  const keywordsMayor = [
+    'al mayor', 'ventas al mayor', 'precio al mayor',
+    'venden al mayor', 'es al mayor', 'comprar al mayor'
+  ]
+  if (keywordsMayor.some(k => normalized.includes(k))) {
+    await sock.sendMessage(from, {
+      text: `🛍️ ¡Claro que sí! También ofrecemos ventas al mayor. \
+Si deseas más información, escribinos aquí y te brindamos todos los detalles.`
+    })
+    return true
+  }
+
   return false
 }

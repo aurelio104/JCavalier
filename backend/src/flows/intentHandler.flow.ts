@@ -65,7 +65,6 @@ export async function handleIntentRouter(
   const emotion: Emotion = analyzeEmotion(normalized)
   const detectedProduct = detectProductByKeywords(normalized)
 
-  // 🔍 Filtro específico: "conjunto de playa" → Sun Set
   let probableCollection = user?.tags?.includes('probable_sun_set') ? 'Sun Set' : ''
   if (normalized.includes('conjunto') && normalized.includes('playa')) {
     intent = 'price'
@@ -145,8 +144,7 @@ export async function handleIntentRouter(
     if (intent === 'price' || detectedProduct || probableCollection) {
       if (probableCollection === 'Sun Set') {
         await sock.sendMessage(from, {
-          text: `☀️ Tenemos conjuntos frescos ideales para clima playero, como la colección *Sun Set*.
-👉 ${empresaConfig.enlaces.catalogo}`
+          text: `☀️ Tenemos conjuntos frescos ideales para clima playero, como la colección *Sun Set*.\n👉 ${empresaConfig.enlaces.catalogo}`
         })
         return true
       }
@@ -191,13 +189,7 @@ export async function handleIntentRouter(
 
   if (intent === 'question') {
     await sock.sendMessage(from, {
-      text: `💬 ¿Qué querés saber?
-
-📦 Envíos
-🧾 Pagos
-📍 Ubicación
-📐 Tallas
-💬 Otro`
+      text: `💬 ¿Qué querés saber?\n\n📦 Envíos\n🧾 Pagos\n📍 Ubicación\n📐 Tallas\n💬 Otro`
     })
     return true
   }
@@ -209,20 +201,6 @@ export async function handleIntentRouter(
     return true
   }
 
-  if ([
-    'ubicacion', 'donde esta la tienda', 'donde queda la tienda',
-    'direccion', 'donde esta', 'direccion tienda',
-    'donde esta ubicada', 'ubicada'
-  ].some(keyword => removeAccents(normalized).includes(removeAccents(keyword)))) {
-    const { direccion, telefono, ubicacionURL } = empresaConfig.contacto
-    await sock.sendMessage(from, {
-      text: `📍 ${direccion}
-🔗 Mapa: ${ubicacionURL}
-📱 ${telefono}`
-    })
-    return true
-  }
-
   if (normalized.includes('cancelar') || normalized.includes('arrepenti') || normalized.includes('ya no lo quiero')) {
     await sock.sendMessage(from, {
       text: `✅ Pedido cancelado. Si pagaste, avisame para gestionar el reembolso.`
@@ -230,7 +208,7 @@ export async function handleIntentRouter(
     return true
   }
 
-  if (intentosSinIntencion >= 1) {
+  if (intentosSinIntencion >= 1 && intent !== 'greeting') {
     await sock.sendMessage(from, {
       text: `Veo que no estoy logrando ayudarte bien 😓. ¿Querés que te conecte con alguien de nuestro equipo?`
     })
