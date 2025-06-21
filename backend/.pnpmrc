@@ -1,1 +1,1 @@
-confirm=false
+echo "package-manager=pnpm@10.12.1" > .npmrc

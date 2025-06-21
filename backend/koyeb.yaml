@@ -1,0 +1,13 @@
+name: bot-inteligente
+build:
+  commands:
+    - pnpm install
+    - pnpm build
+run:
+  cmd: pnpm start
+  env:
+    - name: NODE_ENV
+      value: production
+  ports:
+    - 3000
+  working_dir: backend
