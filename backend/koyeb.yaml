@@ -11,6 +11,4 @@ run:
   env:
     - name: NODE_ENV
       value: production
-  ports:
-    - 3000
   working_dir: backend
