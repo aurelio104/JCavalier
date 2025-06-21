@@ -60,7 +60,6 @@ export const thankyouFlow = addKeyword('FLUJO_FINAL').addAction(
       mensajeEntrega = '📦 Tu encomienda será enviada pronto. Te mantendremos al tanto del número de guía.'
     }
 
-    // 🧠 Mensaje final
     await flowDynamic([
       `🎉 *¡Gracias por tu compra, ${name}!*`,
       '',
@@ -87,7 +86,9 @@ export const thankyouFlow = addKeyword('FLUJO_FINAL').addAction(
 
     await saveConversationToMongo(from, {
       ...user,
-      ultimoThankYouShown: new Date()
+      ultimoThankYouShown: new Date(),
+      flujoActivo: null,
+      ultimaIntencion: 'thank_you'
     })
   }
 )

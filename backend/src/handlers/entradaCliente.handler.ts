@@ -1,5 +1,3 @@
-// ✅ src/handlers/entradaCliente.handler.ts
-
 import { WASocket, proto } from '@whiskeysockets/baileys'
 import { empresaConfig } from '../config/empresaConfig'
 import { obtenerTasaBCV } from '@flows/payment.flow'
@@ -30,7 +28,7 @@ export async function manejarEntradaInformativa({
     'como llegar', 'mapa', 'punto de venta'
   ]
   if (keywordsUbicacion.some(k => normalized.includes(k))) {
-    const { direccion, telefono, correo, ubicacionURL } = empresaConfig.contacto
+    const { direccion, telefono, ubicacionURL } = empresaConfig.contacto
     await sock.sendMessage(from, {
       text: `📍 Dirección:\n${direccion}\n\n🔗 Mapa: ${ubicacionURL}\n📱 ${telefono}`
     })
@@ -75,6 +73,27 @@ export async function manejarEntradaInformativa({
       text: `🛍️ ¡Claro que sí! También ofrecemos ventas al mayor. \
 Si deseas más información, escribinos aquí y te brindamos todos los detalles.`
     })
+    return true
+  }
+
+  // 🙏 Agradecimientos
+  const keywordsGracias = ['gracias', 'muchas gracias', 'se agradece', 'gracias por la info']
+  if (keywordsGracias.some(k => normalized === k)) {
+    const user = await getUser(from)
+    const ultimaVez = user?.ultimoThankYouShown ? new Date(user.ultimoThankYouShown).getTime() : 0
+    const ahora = Date.now()
+
+    if (ahora - ultimaVez > 2 * 60 * 1000) {
+      await sock.sendMessage(from, {
+        text: '¡Gracias a ti! Si necesitás algo más, estoy por aquí. 😊'
+      })
+
+      await saveConversationToMongo(from, {
+        ...user,
+        ultimoThankYouShown: new Date(),
+        ultimaIntencion: 'thank_you'
+      })
+    }
     return true
   }
 

@@ -226,7 +226,6 @@ export async function runDeliveryFlowManualmente(ctx: any, tools: Omit<FlowFnPro
 
   await siguienteAccion(ctx, tools)
 
-  // 🧠 Solo se actualiza el paso si la acción anterior lo dejó igual
   const nuevoState = await tools.state.getMyState()
   if (nuevoState.pasoEntrega === pasoActual) {
     await tools.state.update({ pasoEntrega: pasoActual + 1 })
