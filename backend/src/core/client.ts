@@ -1,5 +1,3 @@
-// src/core/client.ts
-
 import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
@@ -13,16 +11,22 @@ import qrcode from 'qrcode-terminal'
 import pino from 'pino'
 
 import { connectMongo } from '../database/mongo'
-import { getUser } from '@memory/memory.mongo'
+import { getUser, updateUser } from '@memory/memory.mongo'
 import { manejarEntradaInformativa } from '@handlers/entradaCliente.handler'
 import { manejarPedidoDesdeTexto } from '@handlers/pedidoDesdeTexto.handler'
 import { manejarImagenComprobante } from '@handlers/imagenComprobante.handler'
 import { manejarMetodoPago as manejarSeleccionMetodoPago } from '@handlers/metodoPago.handler'
 import { manejarPreguntaInformativa } from '@handlers/preguntaInformativa.handler'
 import { manejarFlujoEntregaPorTexto } from '@handlers/flujoEntregaTexto.handler'
-import { manejarFallbackInteligente } from '@handlers/intencionFallback.handler'
 
+// ✅ Instancia global del socket de WhatsApp
 let botStarted = false
+let globalSock: WASocket | null = null
+
+export const getSock = (): WASocket => {
+  if (!globalSock) throw new Error('El socket de WhatsApp aún no está inicializado')
+  return globalSock
+}
 
 export async function startBot() {
   if (botStarted) return
@@ -43,6 +47,9 @@ export async function startBot() {
     syncFullHistory: false,
     connectTimeoutMs: 45000
   })
+
+  // ✅ Guardar la instancia global del socket
+  globalSock = sock
 
   sock.ev.on('creds.update', saveCreds)
 
@@ -88,16 +95,27 @@ export async function startBot() {
 
       const context = { sock, msg, from, name, text: rawText, userMemory }
 
-      if (
-        await manejarEntradaInformativa(context) ||
-        await manejarPedidoDesdeTexto(context) ||
-        await manejarImagenComprobante(context) ||
-        await manejarSeleccionMetodoPago(context) ||
-        await manejarPreguntaInformativa(context) ||
-        await manejarFlujoEntregaPorTexto(context) ||
-        await manejarFallbackInteligente(context)
-      ) {
-        return
+      const handlers = [
+        manejarEntradaInformativa,
+        manejarPedidoDesdeTexto,
+        manejarImagenComprobante,
+        manejarSeleccionMetodoPago,
+        manejarPreguntaInformativa,
+        manejarFlujoEntregaPorTexto
+      ]
+
+      for (const handler of handlers) {
+        const result = await handler(context)
+
+        // ✅ Detecta resultado de PDF generado
+        if (rawText === '/pago verificado' && result) {
+          console.log('✅ PDF generado y enviado a cliente')
+          if (userMemory) {
+            await updateUser(userMemory._id, { pdfGenerado: true })
+          }
+        }
+
+        if (result) return
       }
     } catch (err: any) {
       if (err?.message?.includes('Bad MAC')) {
@@ -108,4 +126,3 @@ export async function startBot() {
     }
   })
 }
-

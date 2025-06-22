@@ -1,9 +1,10 @@
-// src/handlers/pedidoDesdeTexto.handler.ts
+// ✅ src/handlers/pedidoDesdeTexto.handler.ts
 
 import { WASocket, proto } from '@whiskeysockets/baileys'
 import { contienePedidoDesdeWeb, parseOrderMessage } from '@intelligence/order.detector'
-import { logUserInteraction, saveConversationToMongo, getUser } from '@memory/memory.mongo'
-import type { UserMemory } from '@schemas/UserMemory'
+import { logUserInteraction, updateUser, getUser } from '@memory/memory.mongo'
+import type { Pedido } from '@schemas/UserMemory'
+import { v4 as uuidv4 } from 'uuid'
 
 export async function manejarPedidoDesdeTexto({
   sock,
@@ -38,36 +39,24 @@ export async function manejarPedidoDesdeTexto({
 
   const total = resultado.productos.reduce((sum, p) => sum + parseFloat(p.precio), 0)
 
-  let userMemory: UserMemory | null = await getUser(from)
-
-  userMemory = {
-    ...(userMemory || {
-      _id: from,
-      name,
-      firstSeen: Date.now(),
-      lastSeen: Date.now(),
-      lastMessage: text,
-      tags: [],
-      history: [],
-      emotionSummary: 'neutral',
-      needsHuman: false
-    }),
+  const nuevoPedido: Pedido = {
+    id: uuidv4(),
+    fecha: Date.now(),
     productos: resultado.productos.map(p => p.nombre),
     total: total.toFixed(2),
-    ultimaIntencion: 'order',
-    fechaUltimaCompra: Date.now(),
-    esperandoComprobante: true,
     metodoPago: '',
-    tasaBCV: 0,
-    totalBs: 0,
-    lastOrder: resumen,
-    profileType: userMemory?.profileType,
-    frequency: userMemory?.frequency || 'ocasional'
+    estado: 'pendiente',
+    pdfGenerado: false
   }
 
-  if (userMemory) {
-    await saveConversationToMongo(from, userMemory)
-  }
+  const userMemory = await getUser(from)
+
+  await updateUser(from, {
+    name,
+    pedidos: [...(userMemory?.pedidos || []), nuevoPedido],
+    ultimaIntencion: 'order',
+    fechaUltimaCompra: Date.now()
+  })
 
   await sock.sendMessage(from, {
     text: `✨ Perfecto ${name}, ya tengo tu pedido registrado. Aquí está el resumen completo:\n\n${resumen}\n\n💰 *Total a pagar: $${total.toFixed(2)}*`

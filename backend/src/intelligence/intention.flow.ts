@@ -8,31 +8,35 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 export type IntentionType =
   | 'saludo'
+  | 'precio'
+  | 'catalogo'
+  | 'pedido'
   | 'pregunta'
-  | 'compra'
   | 'reclamo'
   | 'seguimiento'
   | 'otro'
 
 /**
- * Clasifica el mensaje en una categoría general.
- * ⚠️ Usar solo para análisis fuera del flujo principal. Para producción, preferir `detectIntent()`.
+ * Clasifica el mensaje en una categoría general utilizando OpenAI.
+ * ⚠️ Úsalo solo para análisis interno o segmentación fuera del flujo principal.
  */
 export async function detectIntention(text: string): Promise<IntentionType> {
   const prompt = `
 Clasifica el siguiente mensaje de WhatsApp en *una sola* de las siguientes categorías:
 
 - saludo
+- precio
+- catalogo
+- pedido
 - pregunta
-- compra
 - reclamo
 - seguimiento
 - otro
 
 Mensaje: "${text}"
 
-⚠️ Responde únicamente con una palabra exacta (una de las categorías).
-Toma en cuenta el contexto cultural de Venezuela y el enfoque de atención directa y empática de la marca ${empresaConfig.nombre}, especializada en moda de alto estilo.
+⚠️ Responde únicamente con *una sola palabra exacta*, sin explicaciones.
+Toma en cuenta el contexto venezolano y el estilo de atención de la marca "${empresaConfig.nombre}", especializada en moda y estilo.
 `
 
   const completion = await openai.chat.completions.create({
@@ -43,7 +47,15 @@ Toma en cuenta el contexto cultural de Venezuela y el enfoque de atención direc
 
   const intent = completion.choices[0].message.content?.toLowerCase().trim() as IntentionType
 
-  return ['saludo', 'pregunta', 'compra', 'reclamo', 'seguimiento'].includes(intent)
+  return [
+    'saludo',
+    'precio',
+    'catalogo',
+    'pedido',
+    'pregunta',
+    'reclamo',
+    'seguimiento'
+  ].includes(intent)
     ? intent
     : 'otro'
 }

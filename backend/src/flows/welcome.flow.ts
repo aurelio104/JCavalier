@@ -2,7 +2,7 @@
 
 import { WASocket, proto } from '@whiskeysockets/baileys'
 import { getUser, saveConversationToMongo } from '@memory/memory.mongo'
-import { analyzeEmotion, detectIntent, detectarPerfilDeCompra } from '@intelligence/intent.engine'
+import { analyzeEmotion, detectIntent, getPrimaryIntent, detectarPerfilDeCompra } from '@intelligence/intent.engine'
 import { Emotion, BotIntent, UserHistoryEntry, UserMemory } from '@schemas/UserMemory'
 import { empresaConfig } from '../config/empresaConfig'
 
@@ -51,7 +51,9 @@ export async function handleWelcome(
   const greetingWords = ['hola', 'buenas', 'hello', 'hi', 'hey', '👋', '😊', '🤗']
   const isGreetingLike = greetingWords.some(g => normalized.includes(g))
 
-  const intent: BotIntent = detectIntent(normalized)
+  const intents = detectIntent(text)
+  const intent = getPrimaryIntent(intents)
+
   if (intent !== 'greeting' && !isGreetingLike) return false
 
   const user = await getUser(from)

@@ -1,10 +1,11 @@
 // ✅ src/flows/payment.flow.ts
 
 import { addKeyword, FlowFnProps } from '@bot-whatsapp/bot'
-import { saveConversationToMongo } from '@memory/memory.mongo'
+import { saveConversationToMongo, getUser, updateUser } from '@memory/memory.mongo'
 import { empresaConfig } from '../config/empresaConfig'
 import axios from 'axios'
 import { runDeliveryFlowManualmente } from './delivery.flow'
+import type { Pedido } from '@schemas/UserMemory'
 
 const removeAccents = (str: string): string =>
   str.normalize('NFD').replace(/\u0300-\u036f/g, '').toLowerCase()
@@ -51,14 +52,17 @@ export const pasoProcesarMetodo = async (
   { state, flowDynamic }: Omit<FlowFnProps, 'ctx'>
 ): Promise<void> => {
   const respuesta = removeAccents(ctx.body.trim())
-  const data = await state.getMyState()
-  const name = data.name ?? 'cliente'
+  const user = await getUser(ctx.from)
+  if (!user || !user.pedidos?.length) return
 
-  let total = parseFloat(data.total ?? '0')
+  const ultimoPedido: Pedido = [...user.pedidos].reverse().find(p => p.estado === 'pendiente' || p.estado === 'pago_verificado')!
+  const name = user.name ?? 'cliente'
+
+  let total = parseFloat(ultimoPedido.total ?? '0')
   if (isNaN(total)) total = 0
 
-  let tasaBCV = data.tasaBCV
-  let timestamp = data.timestampTasaBCV || 0
+  let tasaBCV = user.tasaBCV
+  let timestamp = user.timestampTasaBCV || 0
   const vencida = Date.now() - timestamp > 3600000
 
   const esPagoMovil = /\b1\b|pago movil|movil/.test(respuesta)
@@ -79,7 +83,9 @@ export const pasoProcesarMetodo = async (
     timestamp = Date.now()
   }
 
-  const totalBs = necesitaBCV ? parseFloat((total * tasaBCV).toFixed(2)) : 0
+const totalBs = necesitaBCV && tasaBCV
+  ? parseFloat((total * tasaBCV).toFixed(2))
+  : 0
   const totalLine = `\n\n💰 *Total a pagar:* $${total.toFixed(2)}`
   const totalBsLine = totalBs > 0 ? `\n💰 *Total en bolívares:* ${formatBs(totalBs)}` : ''
 
@@ -127,16 +133,13 @@ ${empresaConfig.metodosPago.pagoMovil.cedula ? `🆔 Cédula: ${empresaConfig.me
     return
   }
 
-  await state.update({
-    metodoPago: metodo,
-    esperandoComprobante: metodo !== 'Efectivo',
-    tasaBCV,
-    timestampTasaBCV: timestamp,
-    total,
-    totalBs
-  })
+  ultimoPedido.metodoPago = metodo
+  ultimoPedido.estado = metodo === 'Efectivo' ? 'pago_verificado' : 'pendiente'
+  ultimoPedido.tasaBCV = tasaBCV
+  ultimoPedido.totalBs = totalBs
 
-  await saveConversationToMongo(ctx.from, await state.getMyState())
+  await updateUser(ctx.from, { pedidos: user.pedidos })
+
   await flowDynamic(mensajePago)
 
   if (metodo === 'Efectivo') {

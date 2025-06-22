@@ -1,13 +1,18 @@
+// src/main.jsx o src/index.jsx
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom'; // Router para manejar la navegación
+import { BrowserRouter } from 'react-router-dom';
 import App from './App.jsx';
-import './index.css'; // Estilos globales
+import './index.css';
 
-// Crear la raíz de la aplicación y renderizar el componente App
+// ✅ Importar el sistema de notificaciones
+import { Toaster } from 'react-hot-toast';
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter>  {/* BrowserRouter proporciona la capacidad de manejar la navegación */}
+    <BrowserRouter>
+      {/* Montar el sistema de notificaciones */}
+      <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
       <App />
     </BrowserRouter>
   </React.StrictMode>

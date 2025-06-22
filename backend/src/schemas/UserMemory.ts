@@ -16,6 +16,9 @@ export type BotIntent =
   | 'other'
   | 'unknown'
   | 'delivery'
+  | 'payment'
+  | 'cancel'
+  | 'repeat_order'
 
 /** 🧠 Entrada individual del historial de un usuario */
 export interface UserHistoryEntry {
@@ -26,10 +29,45 @@ export interface UserHistoryEntry {
   context?: string
 }
 
+/** 💼 Representación individual de un pedido */
+export interface Pedido {
+  id: string
+  fecha: number
+  productos: string[]
+  total: string
+  metodoPago: string
+  tipoEntrega?: string
+  datosEntrega?: string
+  estado:
+    | 'pendiente'
+    | 'pago_verificado'
+    | 'en_fabrica'
+    | 'empaquetado'
+    | 'enviado'
+    | 'en_camino'
+    | 'entregado'
+    | 'recibido'
+    | 'cancelado'
+  tasaBCV?: number
+  totalBs?: number
+  codigoSeguimiento?: string
+  pdfGenerado?: boolean
+  qrUrl?: string
+  comentario?: string
+  urlComprobante?: string
+  datosPago?: {
+    referencia?: string
+    montoBs?: number
+    fecha?: string
+  }
+  creadoDesde?: 'whatsapp' | 'web' | 'admin' | 'api'
+  canalOrigen?: string
+  nombreCliente?: string
+  telefonoCliente?: string
+}
+
 /** 🧠 Memoria principal de un usuario */
 export interface UserMemory {
-  _id: string
-
   name: string
   firstSeen: number
   lastSeen: number
@@ -64,21 +102,42 @@ export interface UserMemory {
   flujoActivo?: string | null
   ultimoThankYouShown?: Date
   ultimoWelcomeShown?: Date
-
-  /** ⏳ Última intención manejada (para prevenir repeticiones) */
   ultimoIntentHandled?: { intent: BotIntent, timestamp: number }
 
-  /** 🚚 Estado del pedido (seguimiento) */
-  estadoPedido?: 'pendiente' | 'pago_verificado' | 'en_fabrica' | 'empaquetado' | 'enviado' | 'en_camino' | 'entregado' | 'recibido' | 'cancelado'
-
-  /** 🤖 Contacto real del cliente para notificaciones desde el bot */
+  estadoPedido?: Pedido['estado']
   contactoCliente?: string
-
-  /** 🔎 Colección probablemente mencionada (ej: "Sun Set" por "conjuntos de playa") */
   probableCollection?: string
-
-  /** 📌 Número de intentos sin detectar intención útil */
   intentosSinIntencion?: number
+  telefono?: string
+  codigoSeguimiento?: string
+  comentarioCliente?: string
+  urlComprobante?: string
+  imagenComprobante?: string
+
+  datosPago?: {
+    referencia?: string
+    montoBs?: number
+    fecha?: string
+  }
+
+  ultimoIntentoPDF?: number
+  ultimoFlujoEjecutado?: string
+  pdfGenerado?: boolean
+
+  pedidos?: Pedido[]
+
+  // 📲 Interacciones externas (redes sociales, Instagram, email...)
+  canalEntrada?: 'whatsapp' | 'instagram' | 'web' | 'email' | 'tiktok'
+  referenciasExternas?: {
+    instagramUser?: string
+    email?: string
+    handle?: string
+  }
+
+  // 🎯 Personalización futura para campañas de remarketing
+  intereses?: string[]
+  carritoTemporal?: string[]
+  campañasRecibidas?: string[]
 }
 
 /** 🧠 Versión estricta con todos los campos requeridos */
@@ -88,3 +147,19 @@ export type CompleteUserMemory = Required<UserMemory>
 export interface UserMemoryWithId extends UserMemory {
   _id: string
 }
+
+//
+// ✅ SCHEMA + MODEL para Mongoose
+//
+import { Schema, model, Document } from 'mongoose'
+
+export interface UserMemoryDoc extends Document, Omit<UserMemory, '_id'> {}
+
+const UserMemorySchema = new Schema<UserMemoryDoc>({
+  telefono: { type: String, required: true },
+  name: { type: String },
+  pedidos: { type: Array, default: [] }
+  // puedes extender esto con más campos si deseas persistirlos
+})
+
+export const UserMemoryModel = model<UserMemoryDoc>('UserMemory', UserMemorySchema)

@@ -1,7 +1,10 @@
 import { WASocket, proto } from '@whiskeysockets/baileys'
 import { empresaConfig } from '../config/empresaConfig'
 import { obtenerTasaBCV } from '@flows/payment.flow'
-import { getUser, saveConversationToMongo } from '@memory/memory.mongo'
+import { getUser, updateUser } from '@memory/memory.mongo'
+import { generarPDFPedido } from '../utils/pdf.generator'
+import { Pedido } from '@schemas/UserMemory'
+import { notificarEstadoPedido } from '@utils/notificaciones'
 
 const removeAccents = (str: string): string =>
   str.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
@@ -20,82 +23,170 @@ export async function manejarEntradaInformativa({
   name: string
 }): Promise<boolean> {
   const normalized = removeAccents(text)
+  const comando = text.trim().toLowerCase()
+  const botNumber = sock.user?.id?.split(':')[0]
+  const userMemory = await getUser(from)
+  if (!userMemory) return false
 
-  // 🧭 Ubicación
-  const keywordsUbicacion = [
-    'ubicacion', 'ubicacion exacta', 'ubicados', 'direccion', 'direcion',
-    'donde estan', 'donde estan ubicados', 'donde queda la tienda',
-    'como llegar', 'mapa', 'punto de venta'
-  ]
-  if (keywordsUbicacion.some(k => normalized.includes(k))) {
-    const { direccion, telefono, ubicacionURL } = empresaConfig.contacto
+  const displayName = userMemory?.name || name || from.split('@')[0]
+
+  // 🗂️ Ver pedidos recientes
+  if (comando === '/ver pedidos') {
+    if (!Array.isArray(userMemory.pedidos) || userMemory.pedidos.length === 0) {
+      await sock.sendMessage(from, {
+        text: '📭 No tienes pedidos registrados todavía. Cuando hagas uno, aparecerá aquí.'
+      })
+      return true
+    }
+
+    const pedidosOrdenados = [...userMemory.pedidos].sort((a, b) => (b.fecha || 0) - (a.fecha || 0))
+    const resumen = pedidosOrdenados.slice(0, 5).map((p, i) => {
+      const estado = p.estado || 'pendiente'
+      return `${i + 1}️⃣ Pedido #${p.id || 'sin ID'} – $${p.total} – ${estado}`
+    }).join('\n')
+
     await sock.sendMessage(from, {
-      text: `📍 Dirección:\n${direccion}\n\n🔗 Mapa: ${ubicacionURL}\n📱 ${telefono}`
+      text: `📋 *Pedidos recientes:*\n${resumen}`
     })
     return true
   }
 
-  // 💱 Tasa o bolívares
-  const keywordsBss = [
-    'bolivares', 'bs', 'bs.', 'bss', 'tasa', 'taza',
-    'cuanto esta el dolar', 'cuanto esta el bcv', 'cual es la tasa',
-    'cual es la taza', 'cual es la tasa hoy', 'cuanto esta hoy', 'precio del dolar'
-  ]
-  if (keywordsBss.some(k => normalized.includes(removeAccents(k)))) {
-    const tasaBCV = await obtenerTasaBCV()
-    const metodos = ['Pago Móvil', 'Transferencia Bancaria'].map(m => `✅ ${m}`).join('\n')
-    const tasaTexto = tasaBCV > 0
-      ? `📊 Tasa BCV: ${tasaBCV.toFixed(2)} Bs/USD`
-      : `⚠️ No pude consultar la tasa oficial.`
+  // ⚙️ Comandos internos del bot (solo desde el número del bot)
+  if (from === botNumber) {
+    const estados: Record<string, Pedido['estado']> = {
+      '/en fabrica': 'en_fabrica',
+      '/empaquetado': 'empaquetado',
+      '/enviado': 'enviado',
+      '/en camino': 'en_camino',
+      '/entregado': 'entregado',
+      '/cancelado': 'cancelado'
+    }
 
+    if (comando === '/pago verificado') {
+      if (!Array.isArray(userMemory.pedidos) || userMemory.pedidos.length === 0) return true
+
+      const ultimoPedido = [...userMemory.pedidos].reverse().find(p =>
+        p.estado === 'pendiente' || p.estado === 'pago_verificado'
+      )
+      if (!ultimoPedido) {
+        await sock.sendMessage(from, {
+          text: '❗ No se encontró un pedido pendiente para verificar.'
+        })
+        return true
+      }
+
+      if (ultimoPedido.pdfGenerado) {
+        await sock.sendMessage(from, {
+          text: '✅ Ya se ha generado el comprobante de este pedido.'
+        })
+        return true
+      }
+
+      if (ultimoPedido.id) {
+        ultimoPedido.qrUrl = `https://jcavalier.com/seguimiento/${ultimoPedido.id}`
+      }
+
+      const pdfBuffer = await generarPDFPedido(userMemory, ultimoPedido)
+
+      await sock.sendMessage(from, {
+        text: '💵 Tu pago fue verificado. Tu pedido será preparado.'
+      })
+
+      await sock.sendMessage(from, {
+        document: pdfBuffer,
+        fileName: 'resumen-pedido.pdf',
+        mimetype: 'application/pdf'
+      })
+
+      ultimoPedido.estado = 'pago_verificado'
+      ultimoPedido.pdfGenerado = true
+
+      await updateUser(userMemory._id, { pedidos: userMemory.pedidos })
+      await notificarEstadoPedido(sock, from, ultimoPedido)
+      return true
+    }
+
+    if (comando in estados) {
+      const estadoElegido = estados[comando]
+      const ultimoPedido = [...(userMemory.pedidos || [])].reverse().find(p => p.estado && p.estado !== 'entregado')
+      if (ultimoPedido) {
+        ultimoPedido.estado = estadoElegido
+        await updateUser(userMemory._id, { pedidos: userMemory.pedidos })
+        await notificarEstadoPedido(sock, from, ultimoPedido)
+      }
+
+      await sock.sendMessage(from, { text: `ℹ️ Estado actualizado a *${estadoElegido}*.` })
+
+      if (comando === '/entregado') {
+        await sock.sendMessage(from, {
+          text: '✅ Cuando recibas tu pedido, responde con *recibido* para confirmar. ¡Gracias por tu compra!'
+        })
+      }
+
+      return true
+    }
+  }
+
+  // 📍 Ubicación
+  if (normalized.includes('ubicacion') || normalized.includes('donde estan')) {
     await sock.sendMessage(from, {
-      text: `💳 Aceptamos bolívares:\n\n${metodos}\n\n${tasaTexto}`
+      text: `📍 Nuestra ubicación: ${empresaConfig.ubicacion}`
     })
     return true
   }
 
-  // 💳 Métodos de pago
-  const preguntaDePago = /((metodos?|formas?) de pagos?|como (puedo )?pagar|aceptan|quiero pagar|puedo pagar con|cu[aá]les son los m[ée]todos? de pagos?)/i.test(normalized)
-  if (preguntaDePago) {
+  // 🕒 Horario
+  if (normalized.includes('horario')) {
     await sock.sendMessage(from, {
-      text: `💳 Métodos de pago:\n\n✅ Pago Móvil (Bs)\n✅ Transferencia (Bs)\n✅ Zelle (USD)\n✅ Binance (USD)\n✅ Efectivo`
+      text: `🕒 Nuestro horario de atención es:\n${empresaConfig.horario}`
     })
     return true
   }
 
-  // 🛍️ Ventas al mayor
-  const keywordsMayor = [
-    'al mayor', 'ventas al mayor', 'precio al mayor',
-    'venden al mayor', 'es al mayor', 'comprar al mayor'
-  ]
-  if (keywordsMayor.some(k => normalized.includes(k))) {
+  // 💵 Pagos en bolívares
+  if (normalized.includes('aceptan bolivares') || normalized.includes('pagar en bs')) {
+    const tasa = await obtenerTasaBCV()
     await sock.sendMessage(from, {
-      text: `🛍️ ¡Claro que sí! También ofrecemos ventas al mayor. \
-Si deseas más información, escribinos aquí y te brindamos todos los detalles.`
+      text: `💰 Sí, aceptamos bolívares. ${
+        tasa ? `La tasa actual del BCV es *${tasa} Bs/USD*.` : ''
+      }`
     })
     return true
   }
 
   // 🙏 Agradecimientos
-  const keywordsGracias = ['gracias', 'muchas gracias', 'se agradece', 'gracias por la info']
-  if (keywordsGracias.some(k => normalized === k)) {
-    const user = await getUser(from)
-    const ultimaVez = user?.ultimoThankYouShown ? new Date(user.ultimoThankYouShown).getTime() : 0
-    const ahora = Date.now()
-
-    if (ahora - ultimaVez > 2 * 60 * 1000) {
-      await sock.sendMessage(from, {
-        text: '¡Gracias a ti! Si necesitás algo más, estoy por aquí. 😊'
-      })
-
-      await saveConversationToMongo(from, {
-        ...user,
-        ultimoThankYouShown: new Date(),
-        ultimaIntencion: 'thank_you'
-      })
-    }
+  const expresionesAgradecimiento = [
+    'gracias', 'muchas gracias', 'agradecido', 'le agradezco',
+    'thank you', 'thanks', 'thanks a lot', 'i appreciate it',
+    'muy amable', 'mil gracias', 'te lo agradezco',
+    'gracias hermano', 'gracias pana'
+  ]
+  if (expresionesAgradecimiento.some(exp => normalized.includes(exp))) {
+    await sock.sendMessage(from, {
+      text: `¡Con gusto! Gracias a ti por confiar en *${empresaConfig.nombre}*. 🖤 Si necesitas algo más, aquí estoy.`
+    })
     return true
   }
+
+  // 👋 Saludos (resetean frustración y fallback)
+  const saludos = ['hola', 'buen dia', 'buenos dias', 'buenas', 'saludos', 'aló']
+  if (saludos.some(s => normalized.startsWith(s))) {
+    userMemory.intentosSinIntencion = 0
+    userMemory.ultimaIntencion = 'greeting'
+    userMemory.needsHuman = false
+
+    await updateUser(userMemory._id, {
+      intentosSinIntencion: 0,
+      ultimaIntencion: 'greeting',
+      needsHuman: false
+    })
+
+    await sock.sendMessage(from, {
+      text: `👋 ¡Hola ${displayName}! ¿En qué puedo ayudarte hoy?`
+    })
+    return true
+  }
+
 
   return false
 }

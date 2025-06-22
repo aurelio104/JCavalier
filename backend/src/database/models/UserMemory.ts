@@ -2,36 +2,11 @@ import { Schema, model, Document } from 'mongoose'
 import {
   UserMemory,
   UserHistoryEntry,
-  Emotion,
-  BotIntent
+  Pedido
 } from '@schemas/UserMemory'
 
-// Interfaz del documento completo de usuario para MongoDB
-export interface UserMemoryDoc extends Document {
+export interface UserMemoryDoc extends Document, Omit<UserMemory, '_id'> {
   _id: string
-  id?: string
-  name: string
-  firstSeen: number
-  lastSeen: number
-  lastMessage: string
-  tags: string[]
-  history: UserHistoryEntry[]
-  emotionSummary: Emotion
-  needsHuman: boolean
-  ultimaIntencion?: BotIntent
-  fechaUltimaCompra?: number
-  productos: string[]
-  total: string
-  metodoPago: string
-  tipoEntrega: string
-  datosEntrega: string
-  preferredStyles?: string[]
-  esperandoComprobante?: boolean
-
-  // Campos para pagos
-  tasaBCV?: number
-  timestampTasaBCV?: number
-  totalBs?: number
 }
 
 const HistorySchema = new Schema<UserHistoryEntry>(
@@ -40,7 +15,7 @@ const HistorySchema = new Schema<UserHistoryEntry>(
     message: { type: String, required: true },
     emotion: {
       type: String,
-      enum: ['positive', 'neutral', 'negative'],
+      enum: ['positive', 'neutral', 'negative', 'sad', 'frustrated'],
       required: true
     },
     intent: {
@@ -48,7 +23,7 @@ const HistorySchema = new Schema<UserHistoryEntry>(
       enum: [
         'greeting', 'thank_you', 'goodbye', 'complaint',
         'order', 'catalog', 'price', 'size', 'tracking',
-        'question', 'other', 'unknown'
+        'question', 'other', 'unknown', 'delivery'
       ],
       required: true
     },
@@ -57,43 +32,101 @@ const HistorySchema = new Schema<UserHistoryEntry>(
   { _id: false }
 )
 
+const PedidoSchema = new Schema<Pedido>(
+  {
+    id: { type: String, required: true },
+    fecha: { type: Number, required: true },
+    productos: [String],
+    total: String,
+    metodoPago: String,
+    tipoEntrega: String,
+    datosEntrega: String,
+    estado: {
+      type: String,
+      enum: ['pendiente', 'pago_verificado', 'en_fabrica', 'empaquetado', 'enviado', 'en_camino', 'entregado', 'recibido', 'cancelado'],
+      default: 'pendiente'
+    },
+    tasaBCV: Number,
+    totalBs: Number,
+    codigoSeguimiento: String,
+    pdfGenerado: Boolean,
+    qrUrl: String
+  },
+  { _id: false }
+)
+
 const UserMemorySchema = new Schema<UserMemoryDoc>(
   {
     _id: { type: String, required: true },
-    name: { type: String, required: true },
-    firstSeen: { type: Number, required: true },
-    lastSeen: { type: Number, required: true },
-    lastMessage: { type: String, required: true },
+    name: String,
+    firstSeen: Number,
+    lastSeen: Number,
+    lastMessage: String,
     tags: { type: [String], default: [] },
     history: { type: [HistorySchema], default: [] },
     emotionSummary: {
       type: String,
-      enum: ['positive', 'neutral', 'negative'],
+      enum: ['positive', 'neutral', 'negative', 'sad', 'frustrated'],
       default: 'neutral'
     },
     needsHuman: { type: Boolean, default: false },
-    ultimaIntencion: {
-      type: String,
-      enum: [
-        'greeting', 'thank_you', 'goodbye', 'complaint',
-        'order', 'catalog', 'price', 'size', 'tracking',
-        'question', 'other', 'unknown'
-      ],
-      default: 'unknown'
-    },
-    fechaUltimaCompra: { type: Number, default: null },
+    ultimaIntencion: String,
+    fechaUltimaCompra: Number,
     productos: { type: [String], default: [] },
-    total: { type: String, default: '' },
-    metodoPago: { type: String, default: '' },
-    tipoEntrega: { type: String, default: '' },
-    datosEntrega: { type: String, default: '' },
+    total: String,
+    metodoPago: String,
+    tipoEntrega: String,
+    datosEntrega: String,
     preferredStyles: { type: [String], default: [] },
-    esperandoComprobante: { type: Boolean, default: false },
+    esperandoComprobante: Boolean,
 
-    // Campos para pagos
-    tasaBCV: { type: Number, default: null },
-    timestampTasaBCV: { type: Number, default: null },
-    totalBs: { type: Number, default: null }
+    // Pagos
+    tasaBCV: Number,
+    timestampTasaBCV: Number,
+    totalBs: Number,
+
+    // Seguimiento inteligente
+    pasoEntrega: Number,
+    estadoPedido: String,
+    codigoSeguimiento: String,
+    pdfGenerado: Boolean,
+    ultimoIntentoPDF: Number,
+
+    // Flujo e IA
+    flujoActivo: String,
+    ultimoFlujoEjecutado: String,
+    ultimoThankYouShown: Date,
+    ultimoWelcomeShown: Date,
+    ultimoResumenPedido: Date,
+    ultimoIntentHandled: {
+      intent: String,
+      timestamp: Number
+    },
+
+    // Datos del cliente
+    telefono: String,
+    contactoCliente: String,
+    comentarioCliente: String,
+    probableCollection: String,
+    location: String,
+    frequency: String,
+    profileType: String,
+
+    // Campañas
+    canalEntrada: String,
+    campañasRecibidas: { type: [String], default: [] },
+
+    // Comprobantes
+    urlComprobante: String,
+    imagenComprobante: String,
+    datosPago: {
+      referencia: String,
+      montoBs: Number,
+      fecha: String
+    },
+
+    // Pedidos completos
+    pedidos: { type: [PedidoSchema], default: [] }
   },
   {
     versionKey: false,
@@ -101,14 +134,11 @@ const UserMemorySchema = new Schema<UserMemoryDoc>(
   }
 )
 
-// Campo virtual para compatibilidad _id → id
 UserMemorySchema.virtual('id').get(function () {
   return this._id
 })
 
-// Activar los virtuals al convertir a objeto o JSON
 UserMemorySchema.set('toObject', { virtuals: true })
 UserMemorySchema.set('toJSON', { virtuals: true })
 
-// Exportar el modelo
 export const UserMemoryModel = model<UserMemoryDoc>('UserMemory', UserMemorySchema)

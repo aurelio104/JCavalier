@@ -11,6 +11,8 @@ import SocialFloatButtons from './components/SocialFloatButtons.jsx';
 import AdminLoginForm from './components/AdminLoginForm.jsx';
 import AdminDashboard from './components/AdminDashboard.jsx';
 import DashboardProductos from './components/DashboardProductos.jsx';
+import AdminPedidos from './components/AdminPedidos.jsx';
+import PedidoDetalle from './components/PedidoDetalle.jsx'; // ✅ Nuevo import
 import PrivateRoute from './routes/PrivateRoute.jsx';
 
 function App() {
@@ -35,10 +37,10 @@ function App() {
           }
         />
 
-        {/* Página de login */}
+        {/* Login */}
         <Route path="/admin" element={<AdminLoginForm />} />
 
-        {/* Panel administrativo principal */}
+        {/* Dashboard */}
         <Route
           path="/admin/dashboard"
           element={
@@ -48,12 +50,32 @@ function App() {
           }
         />
 
-        {/* Página de gestión de productos */}
+        {/* Gestión productos */}
         <Route
           path="/admin/productos"
           element={
             <PrivateRoute>
               <DashboardProductos />
+            </PrivateRoute>
+          }
+        />
+
+        {/* Gestión pedidos */}
+        <Route
+          path="/admin/pedidos"
+          element={
+            <PrivateRoute>
+              <AdminPedidos />
+            </PrivateRoute>
+          }
+        />
+
+        {/* ✅ Vista detalle pedido */}
+        <Route
+          path="/admin/pedidos/:id"
+          element={
+            <PrivateRoute>
+              <PedidoDetalle />
             </PrivateRoute>
           }
         />

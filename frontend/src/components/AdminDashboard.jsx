@@ -108,18 +108,26 @@ const AdminDashboard = () => {
           transition={{ duration: 1.2, delay: 1.6 }}
         >
           <button
+  onClick={() => navigate('/admin/pedidos')}
+  className="w-48 py-4 border border-white text-white text-lg uppercase tracking-wider hover:bg-white hover:text-black transition rounded-full shadow-md backdrop-blur-sm text-center"
+>
+  Ver Pedidos
+</button>
+
+          <button
             onClick={handleCatalogManage}
             className="w-48 py-4 border border-white text-white text-lg uppercase tracking-wider hover:bg-white hover:text-black transition rounded-full shadow-md backdrop-blur-sm text-center"
           >
             Gestionar Catálogo
           </button>
 
-          <button
-            onClick={handleLogoutAndReturn}
-            className="w-48 py-4 border border-white text-white text-lg uppercase tracking-wider hover:bg-white hover:text-black transition rounded-full shadow-md backdrop-blur-sm text-center"
-          >
-            Cerrar sesión
-          </button>
+<button
+  onClick={() => navigate('/admin/dashboard')}
+  className="mt-6 py-2 px-6 border border-white text-white text-sm uppercase tracking-wider hover:bg-white hover:text-black transition rounded-full shadow-md backdrop-blur-sm"
+>
+  ← Volver al Panel
+</button>
+
         </motion.div>
       </motion.div>
     </section>

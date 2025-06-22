@@ -4,23 +4,25 @@ import {
   BotIntent,
   Emotion,
   UserMemory,
-  UserMemoryWithId
-} from '@schemas/UserMemory'
+  UserMemoryWithId,
+  } from '@/schemas/UserMemory'
 
 const MAX_HISTORY_LENGTH = 100
 
-/** 🧠 Obtener un usuario desde MongoDB */
 export async function getUser(id: string): Promise<UserMemoryWithId | null> {
-  const result = await UserMemoryModel.findById(id).lean()
-  if (!result) return null
-
-  return {
-    ...result,
-    _id: String(result._id)
-  } as UserMemoryWithId
+  const result = await UserMemoryModel.findById(id).lean<UserMemoryWithId>()
+  return result ? { ...result, _id: String(result._id) } : null
 }
 
-/** 🧠 Guardar o actualizar un usuario con validaciones fuertes */
+export async function getAllUsers(): Promise<UserMemoryWithId[]> {
+  const results = await UserMemoryModel.find({}).lean<UserMemoryWithId[]>()
+return results.map((r: UserMemoryWithId) => ({ ...r, _id: String(r._id) }))
+}
+
+export async function updateUser(id: string, data: Partial<UserMemory>): Promise<void> {
+  await UserMemoryModel.updateOne({ _id: id }, { $set: data }, { upsert: true })
+}
+
 export async function saveUser(user: Partial<UserMemoryWithId>): Promise<void> {
   const safeId = user._id?.trim()
   const safeMessage = user.lastMessage?.trim()
@@ -34,7 +36,7 @@ export async function saveUser(user: Partial<UserMemoryWithId>): Promise<void> {
   }
 
   const validHistory: UserHistoryEntry[] = (user.history || []).filter(
-    (h) =>
+    (h): h is UserHistoryEntry =>
       typeof h.message === 'string' &&
       h.message.trim().length > 0 &&
       typeof h.timestamp === 'number' &&
@@ -51,23 +53,20 @@ export async function saveUser(user: Partial<UserMemoryWithId>): Promise<void> {
     tags: user.tags,
     fechaUltimaCompra: user.fechaUltimaCompra,
     productos: user.productos,
-    total: '',
-    metodoPago: '',
-    tipoEntrega: '',
-    datosEntrega: '',
+    metodoPago: user.metodoPago,
+    tipoEntrega: user.tipoEntrega,
+    datosEntrega: user.datosEntrega,
     lastViewedProduct: user.lastViewedProduct,
     lastOrder: user.lastOrder,
     frequency: user.frequency,
     location: user.location,
-    profileType: ['explorador', 'comprador directo', 'indeciso'].includes(user.profileType || '')
-      ? user.profileType
-      : undefined
+    profileType: user.profileType,
+    pedidos: user.pedidos
   }
 
-  await UserMemoryModel.findByIdAndUpdate(safeId, updatePayload, { upsert: true })
+  await updateUser(safeId, updatePayload)
 }
 
-/** 🧠 Registrar una nueva interacción del usuario */
 export async function logUserInteraction(
   id: string,
   text: string,
@@ -94,22 +93,16 @@ export async function logUserInteraction(
     context
   }
 
-  const existing = await UserMemoryModel.findById(safeId).lean()
+  const existing = await getUser(safeId)
 
   let intentTag: string | null = null
   switch (intent) {
-    case 'price':
-      intentTag = 'interesado_en_precios'
-      break
-    case 'size':
-      intentTag = 'buscando_talla'
-      break
-    case 'tracking':
-      intentTag = 'interesado_en_envio'
-      break
+    case 'price': intentTag = 'interesado_en_precios'; break
+    case 'size': intentTag = 'buscando_talla'; break
+    case 'tracking': intentTag = 'interesado_en_envio'; break
   }
 
-  const newTags: string[] = [intentTag, extraTag].filter((tag): tag is string => typeof tag === 'string')
+  const newTags = [intentTag, extraTag].filter((tag): tag is string => !!tag)
 
   if (!existing) {
     const newUser: UserMemoryWithId = {
@@ -124,7 +117,6 @@ export async function logUserInteraction(
       needsHuman: false,
       ultimaIntencion: intent,
       productos: [],
-      total: '',
       metodoPago: '',
       tipoEntrega: '',
       datosEntrega: '',
@@ -132,14 +124,15 @@ export async function logUserInteraction(
       lastOrder: '',
       frequency: 'ocasional',
       location: '',
-      profileType: undefined
+      profileType: undefined,
+      pedidos: []
     }
 
     await UserMemoryModel.create(newUser)
   } else {
-    const previousHistory: UserHistoryEntry[] = Array.isArray(existing.history)
+    const previousHistory = Array.isArray(existing.history)
       ? existing.history.filter(
-          (h) =>
+          (h): h is UserHistoryEntry =>
             typeof h.message === 'string' &&
             h.message.trim().length > 0 &&
             typeof h.timestamp === 'number' &&
@@ -148,11 +141,9 @@ export async function logUserInteraction(
         )
       : []
 
-    const trimmedHistory: UserHistoryEntry[] = [...previousHistory, historyEntry].slice(-MAX_HISTORY_LENGTH)
+    const trimmedHistory = [...previousHistory, historyEntry].slice(-MAX_HISTORY_LENGTH)
 
-    const updatedTags: string[] = Array.from(
-      new Set([...(existing.tags || []), ...newTags])
-    )
+    const updatedTags = Array.from(new Set([...(existing.tags || []), ...newTags]))
 
     const update: Partial<UserMemory> = {
       name: name || existing.name,
@@ -164,11 +155,10 @@ export async function logUserInteraction(
       tags: updatedTags
     }
 
-    await UserMemoryModel.findByIdAndUpdate(safeId, update, { new: true })
+    await updateUser(safeId, update)
   }
 }
 
-/** 🧠 Guardar cualquier actualización parcial desde otros flujos */
 export async function saveConversationToMongo(
   id: string,
   data: Partial<UserMemory>
@@ -178,13 +168,9 @@ export async function saveConversationToMongo(
     return
   }
 
-  await UserMemoryModel.findByIdAndUpdate(id.trim(), data, {
-    upsert: true,
-    new: true
-  })
+  await updateUser(id.trim(), data)
 }
 
-/** 🧠 Guardar feedback de usuario en una colección aparte */
 export async function saveFeedbackToMongo(data: {
   userId: string
   message: string

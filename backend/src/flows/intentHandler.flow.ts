@@ -1,7 +1,5 @@
-// ✅ src/flows/intentHandler.flow.ts
-
 import { WASocket, proto, downloadMediaMessage } from '@whiskeysockets/baileys'
-import { detectIntent, analyzeEmotion } from '@intelligence/intent.engine'
+import { detectIntent, getPrimaryIntent, analyzeEmotion } from '@intelligence/intent.engine'
 import { getUser, saveUser } from '@memory/memory.mongo'
 import { Emotion, BotIntent, UserHistoryEntry, UserMemory } from '@schemas/UserMemory'
 import { handleWelcome } from './welcome.flow'
@@ -18,6 +16,10 @@ function buscarProductosPorKeywords(keywords: string): string[] {
 
 const removeAccents = (str: string): string =>
   str.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+
+function isComercialIntent(intent: BotIntent): boolean {
+  return ['catalog', 'price', 'size', 'order'].includes(intent)
+}
 
 export async function handleIntentRouter(
   text: string,
@@ -61,13 +63,13 @@ export async function handleIntentRouter(
     !excepcionesDelivery.some(k => normalized.includes(k))
   ) return false
 
-  let intent: BotIntent = detectIntent(normalized)
+  const intents = detectIntent(normalized)
+  const intent = getPrimaryIntent(intents)
   const emotion: Emotion = analyzeEmotion(normalized)
   const detectedProduct = detectProductByKeywords(normalized)
 
   let probableCollection = user?.tags?.includes('probable_sun_set') ? 'Sun Set' : ''
   if (normalized.includes('conjunto') && normalized.includes('playa')) {
-    intent = 'price'
     probableCollection = 'Sun Set'
   }
 
@@ -84,8 +86,6 @@ export async function handleIntentRouter(
     emotion,
     context: 'entrada'
   }
-
-  const intentosSinIntencion = (user?.tags?.includes('sin_intencion_1') ? 1 : 0)
 
   const updatedUser: UserMemory = {
     ...(user || {
@@ -107,26 +107,11 @@ export async function handleIntentRouter(
 
   const tagsSet = new Set([...(user?.tags || [])])
   if (probableCollection === 'Sun Set') tagsSet.add('probable_sun_set')
-  if (!['greeting', 'catalog', 'price', 'size', 'order', 'question'].includes(intent)) {
-    tagsSet.add('sin_intencion_1')
-  } else {
-    tagsSet.delete('sin_intencion_1')
-  }
   updatedUser.tags = Array.from(tagsSet)
-
-  if (normalized === 'sí' || normalized === 'si' || normalized.includes('quiero promociones')) {
-    updatedUser.tags = Array.from(new Set([...updatedUser.tags, 'suscrito_promociones']))
-    await saveUser(updatedUser)
-    await sock.sendMessage(from, { text: `✅ Suscrito a promociones, ${name}.` })
-    return true
-  }
 
   await saveUser(updatedUser)
 
-  const isGreeting = intent === 'greeting'
-  const isComercialIntent = ['catalog', 'price', 'size', 'order'].includes(intent)
-
-  if (isGreeting) {
+  if (intent === 'greeting') {
     await handleWelcome(text, sock, from, msg)
 
     if (detectedProduct) {
@@ -140,84 +125,11 @@ export async function handleIntentRouter(
     return true
   }
 
-  if (isComercialIntent && !saludoReciente) {
-    if (intent === 'price' || detectedProduct || probableCollection) {
-      if (probableCollection === 'Sun Set') {
-        await sock.sendMessage(from, {
-          text: `☀️ Tenemos conjuntos frescos ideales para clima playero, como la colección *Sun Set*.\n👉 ${empresaConfig.enlaces.catalogo}`
-        })
-        return true
-      }
-
-      const productosRelacionados = buscarProductosPorKeywords(normalized)
-      if (productosRelacionados.length > 0) {
-        await sock.sendMessage(from, {
-          text: productosRelacionados.join('\n\n')
-        })
-        return true
-      } else {
-        await sock.sendMessage(from, { text: `No encontré productos relacionados.` })
-        return true
-      }
-    }
-    const response = getCatalogResponse(name, normalized, user?.lastSeen)
+  const response = getCatalogResponse(name, normalized, user?.lastSeen)
+  if (response) {
     await sock.sendMessage(from, { text: response })
     return true
   }
 
-  if (intent === 'tracking') {
-    await sock.sendMessage(from, {
-      text: `📦 Para rastrear tu pedido, indícame tu número de orden o nombre completo.`
-    })
-    return true
-  }
-
-  if (intent === 'complaint') {
-    await sock.sendMessage(from, {
-      text: emotion === 'frustrated'
-        ? '😣 Lo resolvemos enseguida.'
-        : '😔 Te ayudo con eso.'
-    })
-    return true
-  }
-
-  if (intent === 'thank_you') {
-    await sock.sendMessage(from, {
-      text: `¡Gracias por tu confianza en *${empresaConfig.nombre}*!` })
-    return true
-  }
-
-  if (intent === 'question') {
-    await sock.sendMessage(from, {
-      text: `💬 ¿Qué querés saber?\n\n📦 Envíos\n🧾 Pagos\n📍 Ubicación\n📐 Tallas\n💬 Otro`
-    })
-    return true
-  }
-
-  if (intent === 'goodbye') {
-    await sock.sendMessage(from, {
-      text: `👋 Gracias por visitarnos. ¡Hasta pronto!`
-    })
-    return true
-  }
-
-  if (normalized.includes('cancelar') || normalized.includes('arrepenti') || normalized.includes('ya no lo quiero')) {
-    await sock.sendMessage(from, {
-      text: `✅ Pedido cancelado. Si pagaste, avisame para gestionar el reembolso.`
-    })
-    return true
-  }
-
-  if (intentosSinIntencion >= 1 && intent !== 'greeting') {
-    await sock.sendMessage(from, {
-      text: `Veo que no estoy logrando ayudarte bien 😓. ¿Querés que te conecte con alguien de nuestro equipo?`
-    })
-  } else {
-    const fallbackResponse = getCatalogResponse(name, normalized, user?.lastSeen)
-    await sock.sendMessage(from, {
-      text: fallbackResponse || `🤔 No encontré eso. ¿Querés ver el catálogo?`
-    })
-  }
-
-  return true
+  return false
 }

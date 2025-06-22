@@ -3,14 +3,15 @@
 import { addKeyword, FlowFnProps } from '@bot-whatsapp/bot'
 import { empresaConfig } from '../config/empresaConfig'
 import { detectIntent, analyzeEmotion } from '@intelligence/intent.engine'
-import { saveConversationToMongo } from '@memory/memory.mongo'
+import { updateUser } from '@memory/memory.mongo'
 import { paymentFlow } from './payment.flow'
 import {
   contienePedidoDesdeWeb,
   parseOrderMessage,
   DetectedProduct
 } from '@intelligence/order.detector'
-import { Emotion, BotIntent, UserMemory } from '@schemas/UserMemory'
+import { Emotion, BotIntent, Pedido } from '@schemas/UserMemory'
+import { v4 as uuidv4 } from 'uuid'
 
 export const ecommerceFlow = addKeyword('welcome')
   .addAction(async (ctx: FlowFnProps['ctx'], { flowDynamic, state, gotoFlow }) => {
@@ -62,11 +63,20 @@ ${empresaConfig.enlaces.catalogo}`,
 
         const total = resultado.productos.reduce((sum, p) => sum + parseFloat(p.precio), 0)
 
-        // 🧠 Guardamos en memoria temporal + Mongo
-        const memoriaParcial: Partial<UserMemory> = {
-          name,
+        // ✅ Crear nuevo pedido con ID único
+        const nuevoPedido: Pedido = {
+          id: uuidv4(),
+          fecha: Date.now(),
           productos: resultado.productos.map(p => p.nombre),
           total: total.toFixed(2),
+          metodoPago: '',
+          estado: 'pendiente',
+          pdfGenerado: false
+        }
+
+        await updateUser(from, {
+          name,
+          pedidos: [...(user?.pedidos || []), nuevoPedido],
           ultimaIntencion: 'order',
           fechaUltimaCompra: Date.now(),
           emotionSummary: emotion,
@@ -76,10 +86,7 @@ ${empresaConfig.enlaces.catalogo}`,
             intent: 'order',
             timestamp: Date.now()
           }
-        }
-
-        await saveConversationToMongo(from, memoriaParcial)
-        await state.update(memoriaParcial)
+        })
 
         await flowDynamic([
           `✅ Pedido registrado:\n\n${resumen}`,

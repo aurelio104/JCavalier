@@ -1,5 +1,3 @@
-// ✅ src/intelligence/intent.engine.ts
-
 import { Emotion, BotIntent } from '@schemas/UserMemory'
 import { fuzzyIncludes } from '@utils/fuzzyMatch'
 import { empresaConfig } from '../config/empresaConfig'
@@ -17,55 +15,61 @@ export function normalize(text: string): string {
 }
 
 /**
- * Detecta la intención del usuario desde el texto normalizado.
+ * Devuelve todas las intenciones detectadas en el texto.
  */
-export function detectIntent(text: string): BotIntent {
+export function detectIntent(text: string): BotIntent[] {
   const normalized = normalize(text)
+  const intents: Set<BotIntent> = new Set()
 
-  // 🧠 Conversacionales
-  if (/\b(hola|buenas|saludos|hey|holi)\b/.test(normalized)) return 'greeting'
-  if (/\b(gracias|muy amable|perfecto|encantado|excelente servicio)\b/.test(normalized)) return 'thank_you'
-  if (/\b(chao|adios|nos vemos|hasta luego)\b/.test(normalized)) return 'goodbye'
-  if (/\b(no sirve|problema|defecto|fallo|malo|incompleto|inconveniente|error)\b/.test(normalized)) return 'complaint'
+  // Conversacionales
+  if (/\b(hola|buenas|saludos|hey|holi)\b/.test(normalized)) intents.add('greeting')
+  if (/\b(gracias|muy amable|perfecto|encantado|excelente servicio)\b/.test(normalized)) intents.add('thank_you')
+  if (/\b(chao|adios|nos vemos|hasta luego)\b/.test(normalized)) intents.add('goodbye')
+  if (/(no sirve|problema|defecto|fallo|malo|incompleto|inconveniente|error)/.test(normalized)) intents.add('complaint')
 
-  // 🛍️ Comerciales
-  if (
-    /\b(catalogo|coleccion|ropa|modelos|conjunto|camisa|franela|pantalon|short|producto|prenda|oversize|set|dama|caballero|color|ver ropa|ver modelos|outfit|look)\b/
-      .test(normalized)
-  ) return 'catalog'
+  // Comerciales
+  if (/(catalogo|coleccion|ropa|modelos|conjunto|conjuntos|camisa|franela|pantalon|short|producto|prenda|oversize|set|dama|caballero|color|ver ropa|ver modelos|outfit|look|playera)/.test(normalized)) intents.add('catalog')
+  if (/(precio|precios|costos|cuanto cuesta|cuanto valen|vale|cuesta|tarifa|cuanto es|valor de|coste|how much|price|cuanto cuestan los conjuntos de playa|precio conjunto playa|precio conjuntos de playa)/.test(normalized)) intents.add('price')
+  if (/(talla|tallas|medida|xs|s|m|l|xl|xxl|hay talla|que tallas|size)/.test(normalized)) intents.add('size')
+  if (/(quiero esto|me gusta este|comprar|lo compro|agregar al carrito|confirmo pedido|hago el pedido|lo llevo|quiero pedir|quiero ordenar|buy)/.test(normalized)) intents.add('order')
+  if (/(cuando llega|seguimiento|trackeo|estado del pedido|envio|en camino|donde esta|tracking|rastreo)/.test(normalized)) intents.add('tracking')
 
-  if (
-    /\b(precio|costos|cuanto cuesta|cuanto valen|vale|cuesta|tarifa|cuanto es|valor de|coste|how much|price)\b/
-      .test(normalized)
-  ) return 'price'
+  // Consultas generales
+  if (/(cuanto mide|cuantas unidades|como funciona|puedo|hay stock|dudas|me explicas|informacion|how does it work)/.test(normalized)) intents.add('question')
 
-  if (
-    /\b(talla|tallas|medida|xs|s|m|l|xl|xxl|hay talla|que tallas|size)\b/
-      .test(normalized)
-  ) return 'size'
+  if (intents.size === 0) {
+    console.log(`🧠 [Intent Engine] No match: "${text}" → "${normalized}" → 'unknown'`)
+    intents.add('unknown')
+  }
 
-  if (
-    /\b(quiero esto|me gusta este|comprar|lo compro|agregar al carrito|confirmo pedido|hago el pedido|lo llevo|quiero pedir|quiero ordenar|buy)\b/
-      .test(normalized)
-  ) return 'order'
+  return Array.from(intents)
+}
 
-  if (
-    /\b(cuando llega|seguimiento|trackeo|estado del pedido|envio|en camino|donde esta|tracking|rastreo)\b/
-      .test(normalized)
-  ) return 'tracking'
-
-  // ❓ Consultas generales
-  if (
-    /\b(cuanto mide|cuantas unidades|como funciona|puedo|hay stock|dudas|me explicas|informacion|how does it work)\b/
-      .test(normalized)
-  ) return 'question'
-
-  return 'other'
+/**
+ * Determina la intención principal según prioridad.
+ */
+export function getPrimaryIntent(intents: BotIntent[]): BotIntent {
+  const priority: BotIntent[] = [
+    'order',
+    'price',
+    'catalog',
+    'tracking',
+    'size',
+    'question',
+    'complaint',
+    'thank_you',
+    'greeting',
+    'goodbye',
+    'unknown'
+  ]
+  for (const p of priority) {
+    if (intents.includes(p)) return p
+  }
+  return 'unknown'
 }
 
 /**
  * Detecta emociones básicas en texto del usuario.
- * Ideal para flujos rápidos que no requieren `detectEmotion()`.
  */
 export function analyzeEmotion(text: string): Emotion {
   const normalized = normalize(text)
@@ -83,7 +87,6 @@ export function analyzeEmotion(text: string): Emotion {
 
 /**
  * Evalúa si se trata de una pregunta directa sobre precios.
- * ⚠️ Usar dentro de `intentHandler.flow.ts`.
  */
 export function isPriceInquiry(message: string): boolean {
   const normalized = normalize(message)
@@ -94,6 +97,7 @@ export function isPriceInquiry(message: string): boolean {
     'precio conjuntos',
     'cuanto cuestan los conjuntos',
     'conjuntos de playa precio',
+    'precio conjunto playa',
     'precio outfit',
     'precio look',
     'set old money cuanto cuesta',
@@ -110,15 +114,15 @@ export function isPriceInquiry(message: string): boolean {
 export function detectarPerfilDeCompra(text: string): 'explorador' | 'comprador directo' | 'indeciso' {
   const normalized = normalize(text)
 
-  if (/\b(quiero esto|lo compro|confirmo pedido|hago el pedido|comprar|buy)\b/.test(normalized)) {
+  if (/(quiero esto|lo compro|confirmo pedido|hago el pedido|comprar|buy)/.test(normalized)) {
     return 'comprador directo'
   }
 
-  if (/\b(catálogo|colección|camisa|conjunto|ropa|ver modelos|outfit)\b/.test(normalized)) {
+  if (/(catálogo|colección|camisa|conjunto|conjuntos|ropa|ver modelos|outfit|playa|sun set)/.test(normalized)) {
     return 'explorador'
   }
 
-  if (/\b(como funciona|hay stock|me explicas|que incluye|puedo pagar con)\b/.test(normalized)) {
+  if (/(como funciona|hay stock|me explicas|que incluye|puedo pagar con|aceptan pago movil|aceptan bolivares|me interesa)/.test(normalized)) {
     return 'indeciso'
   }
 

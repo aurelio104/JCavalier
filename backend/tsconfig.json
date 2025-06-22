@@ -20,19 +20,18 @@
       "@services/*": ["src/services/*"],
       "@utils/*": ["src/utils/*"],
       "@schemas/*": ["src/schemas/*"],
-      "@models/*": ["src/database/models/*"],
+      "@models/*": ["src/database/models/*"], // ← CORREGIDO AQUÍ
       "@types/*": ["src/types/*"],
       "@data/*": ["src/data/*"],
-      "@/*": ["src/*"],
       "@handlers/*": ["src/handlers/*"],
-      "@ocr/*": ["src/ocr/*"]
+      "@ocr/*": ["src/ocr/*"],
+      "@/*": ["src/*"]
     }
   },
   "include": [
     "src/**/*",
-    "index.ts",
-    "global.d.ts",
-    "src/types/**/*"
+    "main.ts",
+    "global.d.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

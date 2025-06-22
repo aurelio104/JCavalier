@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Seguimiento de Pedido</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f8f8f8;
+      padding: 20px;
+      max-width: 500px;
+      margin: auto;
+    }
+
+    h1 {
+      color: #222;
+      text-align: center;
+    }
+
+    .card {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    .info {
+      margin: 10px 0;
+      font-size: 15px;
+    }
+
+    .info strong {
+      color: #333;
+    }
+
+    ul {
+      padding-left: 20px;
+      margin: 5px 0;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 30px;
+      font-size: 12px;
+      color: gray;
+    }
+  </style>
+</head>
+<body>
+  <h1>📦 Pedido #<%= pedido.id || 'Sin ID' %></h1>
+
+  <div class="card">
+    <div class="info"><strong>Estado:</strong> <%= pedido.estado || 'Sin estado' %></div>
+    <div class="info"><strong>Total:</strong> $<%= pedido.total || '0.00' %> / Bs <%= pedido.totalBs || '---' %></div>
+    <div class="info"><strong>Fecha:</strong> <%= new Date(pedido.fecha).toLocaleString() %></div>
+
+    <% if (pedido.productos && pedido.productos.length > 0) { %>
+      <div class="info"><strong>Productos:</strong>
+        <ul>
+          <% pedido.productos.forEach(p => { %>
+            <li><%= p %></li>
+          <% }) %>
+        </ul>
+      </div>
+    <% } %>
+
+    <div class="info"><strong>Método de pago:</strong> <%= pedido.metodoPago || 'No especificado' %></div>
+    <div class="info"><strong>Entrega:</strong> <%= pedido.datosEntrega || 'No definido' %></div>
+
+    <% if (pedido.nombreCliente || pedido.telefonoCliente) { %>
+      <div class="info"><strong>Cliente:</strong>
+        <%= pedido.nombreCliente || 'Sin nombre' %> (<%= pedido.telefonoCliente || 'sin número' %>)
+      </div>
+    <% } else { %>
+      <div class="info"><strong>Cliente:</strong> Información no disponible</div>
+    <% } %>
+  </div>
+
+  <footer>
+    JCavalier © 2025 – Estilo con propósito
+  </footer>
+</body>
+</html>
